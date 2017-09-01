@@ -47,7 +47,7 @@
 #Setting S_AFKIdleTimeLimit 60000 as _("In millisecond")
 #Setting S_AFKSpawnSelectTimeLimit 20000 as _("In millisecond")
 #Setting S_MaxRounds 4
-#Setting S_BotBlue	1
+#Setting S_BotBlue	0
 #Setting S_BotRed		0
 
 /// <summary>
@@ -129,11 +129,11 @@ declare CSmPlayer[] spectatorList;
 If they succed, they win 1 points. If they don't, Defenders win 1 point.
 If they succed they will have to rush to the goal UNDER 30 SECONDS to get a SECOND POINT.
 The team with a number of 6 points win.""");
-	StormiumSS::SetDescription("""► In attack or defense, you can choose among 5 kits ! 
+	StormiumSS::SetDescription("""? In attack or defense, you can choose among 5 kits ! 
 You have a main weapon + other weapons/actions.
 
-► In each game, 2 players are selected randomly to be the $0dd❄King of Cryo$fff (in Attackers team),
-and the $e80🔥 King of Meteor$fff (in Defenders team).
+? In each game, 2 players are selected randomly to be the $0dd?King of Cryo$fff (in Attackers team),
+and the $e80? King of Meteor$fff (in Defenders team).
 They have a great power thanks to STORMIUM ! 
 They have 300HP and mass destruction weapons !""");
 	StormiumSS::SetScoreManialink(GetScoreManialink());
@@ -314,14 +314,6 @@ OpenLink("https://discordapp.com/invite/BBHC3sT", CMlScript::LinkType::ExternalB
 
 ***Match_StartRound***
 ***
-	/*if (MathLib::Abs(GetNbPlayers(1) - GetNbPlayers(2)) > 1)
-	{
-		BalanceTeams();
-	}*/
-	
-	// Vérifier le temps du round précédent et l'équilibrer en fonction des ranks si trop court
-	// Vérifier le temps du round précédent et l'équilibrer en fonction des scores précédents si trop court (et si rank balance effectué)
-
 	UIManager.UIAll.TeamLabelsVisibility = CUIConfig::ELabelsVisibility::Never ;
 	UIManager.UIAll.OpposingTeamLabelsVisibility = CUIConfig::ELabelsVisibility::Never ;
 
@@ -581,7 +573,10 @@ log("Temps min : "^(StartPrevMapTime + MapMinTime)/1000^"s, Now: "^Now/1000^"s")
 					
 					SendSrvMessage(player.Login, "GoRespawnScreen");
 					
-					Kits::SetKit(player, Net_playerWantedKit);
+					if (!player.User.IsFakeUser)
+						Kits::SetKit(player, Net_playerWantedKit);
+					else
+						Kits::SetKit(player, "teamlord");
 					
 					declare respawnTime for player = Now;
 					SM::Spawn/*Player*/(player, player.CurrentClan, player.Armor, spawn.PlayerSpawn, Now);
@@ -963,26 +958,10 @@ Void UpdateGetVariables()
 	declare count = 0;
 	foreach (player in Players)
 	{
-		declare Integer toto for player;
-		toto = 88;
-		//log("toto1:"^toto);
-		declare Integer PlayerClan for player;
+		declare PlayerClan for player = 0;
 		if (PlayerClan == clan)
 			count += 1;
-		//log(player.User.Login^" : playerClan : "^PlayerClan);
-		//log(player.User.Login^" : "^CurrentClan(player));
-		//log(player.User.LadderRank);
-		//log(SM::GetUser(player.User.Login).LadderRank);
-		//declare CsmPlayer toto for player;
-		//log(toto);
-		//log("làà"^player.User.Id);
 	}
-	//log("count : "^count);
-	log("testttttt");
-	declare Integer[] test;
-	test.add(588);
-	log("no"^test.exists(500));
-	log("yes"^test.exists(588));
 	return count;
 }*/
 
@@ -1402,7 +1381,6 @@ Void refreshVoteBalance() {
 	LastTimeBalance = Now; 
 	
 	UIManager.UIAll.SendChat("Teams are now balanced in term of size.");
-	//log(Players);
 	foreach (player in Players)
 	{	
 		declare oldPlayerClan = player.CurrentClan;
@@ -1732,6 +1710,7 @@ Text layer_GetSpawnInterface()
 				<frameinstance modelid="fm_Class" id="Frame_Class4" posn="0 -5"/>
 				<frameinstance modelid="fm_Class" id="Frame_Class5" posn="0 -20"/>
 				<frameinstance modelid="fm_Class" id="Frame_Class6" posn="0 -35"/>
+				<frameinstance modelid="fm_Class" id="Frame_Class7" posn="0 -50"/>
 			</frame>
 			
 			<frame pos="-101 -12" z-index="0">
@@ -2001,6 +1980,8 @@ Text layer_GetSpawnInterface()
 					return "ADN / MediGun";
 				if (kit == "engineer")
 					return "Shotgun";
+				if (kit == "teamlord")
+					return "CrossBoom";
 				return "???";
 			}
 			
@@ -2018,6 +1999,8 @@ Text layer_GetSpawnInterface()
 					return "Switch Weapon";
 				if (kit == "engineer")
 					return "Turret";
+				if (kit == "teamlord")
+					return "Mega Buff (not done yet)";
 				return "???";
 			}
 			
@@ -2035,6 +2018,8 @@ Text layer_GetSpawnInterface()
 					return "Boucing Ball (Heal Allies)";
 				if (kit == "engineer")
 					return "Grenade";
+				if (kit == "teamlord")
+					return "Grenade (will use another weapon soon)";
 				return "???";
 			}
 			
@@ -2052,6 +2037,8 @@ Text layer_GetSpawnInterface()
 					return " ADN isn't very powerful but it is enough to defend yourself.\n MediGun is useful to heal your teammates during the battle! But you can't heal yourself with it.\n The Healing Bouncing Ball is a big ball that heal all your teammates around it !";
 				if (kit == "engineer")
 					return " Shotgun is more powerful near the ennemy than far ! It can push players pretty far.\n Turret are placeable everywhere. You can heal your turret by staying next to it ! Turret upgrade when it stays alive.";
+				if (kit == "teamlord")
+					return " The CrossBoom can be charged while holding the shoot button to have a bigger shoot power, but it will be innacurate for a short period of time after a shot.\n The more there are allies near of you, the more you have a boost defense and the more they have a better firerate.";
 				return "???";
 			}
 			
@@ -2139,7 +2126,7 @@ Text layer_GetSpawnInterface()
 				}
 				
 				declare FrameClasses = CMlFrame[];
-				for (I, 1, 6)
+				for (I, 1, 7)
 				{
 					declare frame <=> (Page.GetFirstChild("Frame_Class" ^ I) as CMlFrame);
 					declare classLabel for frame <=> (frame.GetFirstChild("Label_SelectClass") as CMlLabel);
@@ -2156,6 +2143,7 @@ Text layer_GetSpawnInterface()
 					if (I == 4) { classLabel.Value = "NINJA"; classIcon.Value = "🏃"; }
 					if (I == 5) { classLabel.Value = "ENGINEER"; classIcon.Value = "🔧"; }
 					if (I == 6) { classLabel.Value = "MEDIC"; classIcon.Value = ""; }
+					if (I == 7) { classLabel.Value = "TEAMLORD"; classIcon.Value = ""; }
 					
 					declare originalKit for SelectClassButton = TL::ToLowerCase(classLabel.Value);
 					
@@ -2449,13 +2437,13 @@ Text layer_GetSpawnInterface()
 							if (Net_BalancingIsRequired) {
 								declare netwrite Net_PlayerVote for UI = 0;
 								if (event.KeyName == "F3") {
-									log("F3");
+									//log("F3");
 									Net_PlayerVote += 1;
 								} else if (event.KeyName == "F4") {
-									log("F4");
+									//log("F4");
 									Net_PlayerVote += 2;
 								} else if (event.KeyName == "F5") {
-									log("F5");
+									//log("F5");
 									Net_PlayerVote += 3;
 								}
 							}

@@ -17,6 +17,7 @@
 #Const EM_Medic "medic"
 #Const EM_Ninja "ninja"
 #Const EM_Mage "mage"
+#Const EM_Teamlord "teamlord"
 
 #Const C_TurretType_Missiles 1
 #Const C_TurretType_Flak 2
@@ -41,6 +42,7 @@
 #Const EW_EngineerTurret "EngineerTurret"
 #Const EW_TurretLvl1Weapon "EW_TurretLvl1Weapon"
 #Const EW_TurretTankWeapon "MegaPulser"
+#Const EW_CrossBoom "CrossBoom"
 
 #Const C_TurretModelPath ""
 
@@ -80,14 +82,14 @@ CSmPlayer Turret_Get(Ident turretId, Text loginFallback)
 {
 	if (BotPlayers.existskey(turretId))
 		return BotPlayers[turretId];
-	/*foreach (player in BotPlayers)
+	foreach (player in BotPlayers)
 	{
 		if (player.Driver != Null
 			&& player.Driver.Owner != Null
 			&& player.Driver.Owner.User != Null
 			&& player.Driver.Owner.User.Login == loginFallback)
 			return player;
-	}*/
+	}
 	
 	return Null;
 }
@@ -126,7 +128,7 @@ Void UpgradeTurret(Ident turretId, Text loginFallback)
 		if (Turret_Type == 1)
 			Turret.ArmorMax = 175 * 100;
 		else
-			Turret.ArmorMax = 250 * 100;
+			Turret.ArmorMax = 275 * 100;
 	}
 	if (Turret_Level == 2)
 	{
@@ -139,9 +141,9 @@ Void UpgradeTurret(Ident turretId, Text loginFallback)
 		}
 		else
 		{
-			Turret.ArmorMax = 300 * 100;
-			Turret.Armor += 60 * 100;		
-			Turret.AmmoGain = 1.5;
+			Turret.ArmorMax = 400 * 100;
+			Turret.Armor += 120 * 100;		
+			Turret.AmmoGain = 1.1;
 		}
 	}
 	if (Turret_Level == 3)
@@ -155,9 +157,9 @@ Void UpgradeTurret(Ident turretId, Text loginFallback)
 		}
 		else
 		{
-			Turret.ArmorMax = 400 * 100;
-			Turret.Armor += 120 * 100;	
-			Turret.AmmoGain = 2.25;	
+			Turret.ArmorMax = 750 * 100;
+			Turret.Armor += 250 * 100;	
+			Turret.AmmoGain = 1.25;	
 		}
 	}
 }
@@ -670,6 +672,15 @@ Void SetKit(CSmPlayer player, Text _kit)
 		ActionLoad(player, CSmMode::EActionSlot::Slot_C, ActionId[EW_Forcefield]);	
 		ActionLoad(player, CSmMode::EActionSlot::Slot_E, NullId);	
 	}
+	if (kit == "teamlord")
+	{
+		player.ArmorMax = 125 * 100;
+		player.ForceModelId = ModelId[EM_Teamlord];
+		
+		ActionLoad(player, CSmMode::EActionSlot::Slot_A, ActionId[EW_CrossBoom]);
+		ActionLoad(player, CSmMode::EActionSlot::Slot_C, ActionId[EW_Grenade]);	
+		ActionLoad(player, CSmMode::EActionSlot::Slot_E, NullId);	
+	}
 	
 	declare playerKit for player = kit;
 	playerKit = kit;
@@ -715,7 +726,6 @@ Text GetPlayerMarkerLayer()
 	return """
 	<framemodel id="FrameModel_PlayerMarker">
 		<label id="Label_PlayerClass" {{{CC}}} textembold="1" textprefix="$s" />
-		<quad z-index="0" sizen="10 5" style="BgsPlayerCard" substyle="ProgressBar" opacity=".4" colorize="000" pos="0 0"/>
 	</framemodel>
 	
 	{{{Instances}}}
@@ -737,6 +747,8 @@ Text GetPlayerMarkerLayer()
 				return "";
 			if (playerKit == "turret")
 				return "";
+			if (playerKit == "teamlord")
+				return "";
 			return "";
 		}
 		
@@ -824,7 +836,7 @@ Text GetPlayerMarkerLayer()
 						|| (GUIPlayerKit == "medic" && player.Armor > (player.ArmorMax / 4) + 100))
 						&& EagleEyeTime < ArenaNow)
 						{
-							ClientMarkers["players"] ^= "<marker visibility='WhenVisible' distmax='50' manialinkframeid='Frame_PlayerMarker#" ^ i ^ "' playerlogin='" ^ player.User.Login ^ "' />";
+							ClientMarkers["players"] ^= "<marker visibility='WhenVisible' distmax='60' manialinkframeid='Frame_PlayerMarker#" ^ i ^ "' playerlogin='" ^ player.User.Login ^ "' />";
 							label_PlayerClass.Opacity = 1.;
 						}
 						else
@@ -916,6 +928,13 @@ Text GetEnergyBarLayer()
 			<label {{{CC}}} textfont="OswaldMono" pos="0 -5" text="$sPress '   ' to switch weapon" z-index="1" textcolor="fff" textsize="2"/>
 		</frame>
 		
+		<frame id="Frame_BoostTeamLordBuff" pos="135 -70">
+			<label id="LabelFireRateSpeed" pos="4" style="TextButtonBig" text="1" textprefix="$s" textsize="6" halign="left" valign="bottom"/>
+			<label style="TextButtonBig" text="x" textprefix="$s" textsize="4" halign="left" valign="bottom"/>
+			<label id="LabelFireRate" pos="-1 0" text="FIRE RATE" style="TextButtonBig" textprefix="$s" halign="right" valign="bottom" />
+			<label id="LabelNearTeamLords" pos="2 -4" text="NEAR TEAMLORDS: $9990" style="TextButtonBig" textprefix="$s" textsize="1.5" halign="right" valign="bottom" />
+		</frame>
+
 		<frame z-index="-1000">
 			<frameinstance pos="30 -70" id="Frame_Consumable1" modelid="FrameModel_Consumable"/>
 			<frameinstance pos="30 -75" id="Frame_Consumable2" modelid="FrameModel_Consumable"/>
@@ -1035,6 +1054,11 @@ Text GetEnergyBarLayer()
 			declare CMlLabel Label_TurretLevel;
 			declare CMlLabel Label_TurretXP;
 			
+			declare CMlFrame FrameBoostTeamLordBuff;
+			declare CMlLabel LabelFireRateSpeed;
+			declare CMlLabel LabelFireRate;
+			declare CMlLabel LabelNearTeamLords;
+			
 			//declare CMlCamera CameraEagleEyeVision;
 			
 			declare Real TimeDelta;
@@ -1053,6 +1077,8 @@ Text GetEnergyBarLayer()
 					return "🏃";				
 				if (playerKit == "mage")
 					return "";
+				if (playerKit == "teamlord")
+					return "";
 				return "";
 			}
 			
@@ -1122,7 +1148,8 @@ Text GetEnergyBarLayer()
 					
 					if (Net_PlayerKit == "soldier"
 						|| Net_PlayerKit == "engineer"
-						|| Net_PlayerKit == "sniper")
+						|| Net_PlayerKit == "sniper"
+						|| Net_PlayerKit == "teamlord")
 					{
 						if (i == 2)
 							{ label_ActionName.Value ^= "Grenade"; label_Icon.Value ^= ""; }
@@ -1179,6 +1206,11 @@ Text GetEnergyBarLayer()
 							{ label_ActionName.Value ^= "Curse Target"; label_Icon.Value ^= ""; }
 						if (i == 2)
 							{ label_ActionName.Value ^= "Forcefield"; label_Icon.Value ^= ""; }
+					}
+					else if (Net_PlayerKit == "teamlord")
+					{
+						if (i == 1)
+							{ label_ActionName.Value ^= "Mega buff"; label_Icon.Value ^= ""; }
 					}
 					else
 						label_ActionName.Value ^= "Unknown";
@@ -1322,6 +1354,46 @@ Text GetEnergyBarLayer()
 					Label_TurretLevel.SetText("Lvl." ^ Net_TurretLevel);
 				}
 			}
+			
+			Void ManageBuffs(CSmPlayer ActivePlayer)
+			{
+					declare netread Net_PlayerKit for ActivePlayer = "";
+					if (Net_PlayerKit == "teamlord")
+					{
+						declare nearTeamMates = 0;
+						foreach (player in Players)
+						{
+							if (MathLib::Distance(player.Position, ActivePlayer.Position) < 17.5
+							&& player.CurrentClan == ActivePlayer.CurrentClan
+							&& player != ActivePlayer)
+							{
+								nearTeamMates += 1;
+							}
+						}
+						LabelNearTeamLords.SetText("Near allies: $999" ^ nearTeamMates);
+						LabelFireRate.SetText("ARMOR BOOST");
+						LabelFireRateSpeed.SetText("" ^ 1. + (nearTeamMates * 0.5));
+					}
+					else
+					{
+						declare nearTeamMates = 0;
+						foreach (player in Players)
+						{
+							declare netread Net_PlayerKit as otherPlayerKit for player = "";
+							
+							if (MathLib::Distance(player.Position, ActivePlayer.Position) < 17.5
+							&& player.CurrentClan == ActivePlayer.CurrentClan
+							&& player != ActivePlayer
+							&& otherPlayerKit == "teamlord")
+							{
+								nearTeamMates += 1;
+							}
+						}
+						LabelNearTeamLords.SetText("Near TeamLords: $999" ^ nearTeamMates);
+						LabelFireRate.SetText("FIRE RATE");
+						LabelFireRateSpeed.SetText("" ^ 1. + (nearTeamMates * 0.3));						
+					}
+			}
 		
 			main()
 			{
@@ -1368,6 +1440,11 @@ Text GetEnergyBarLayer()
 				Label_TurretXP <=> (Page.GetFirstChild("Label_TurretXP") as CMlLabel);
 				Label_TurretLevel <=> (Page.GetFirstChild("Label_TurretLevel") as CMlLabel);
 				
+				FrameBoostTeamLordBuff <=> (Page.GetFirstChild("Frame_BoostTeamLordBuff") as CMlFrame);
+				LabelNearTeamLords <=> (Page.GetFirstChild("LabelNearTeamLords") as CMlLabel);
+				LabelFireRate <=> (Page.GetFirstChild("LabelFireRate") as CMlLabel);
+				LabelFireRateSpeed <=> (Page.GetFirstChild("LabelFireRateSpeed") as CMlLabel);
+				
 //				CameraEagleEyeVision <=> (Page.GetFirstChild("CameraEagleEyeVision") as CMlCamera);
 				
 				foreach (control in Frame_Armors.Controls)
@@ -1404,7 +1481,10 @@ Text GetEnergyBarLayer()
 						ActivePlayer <=> GUIPlayer;
 					if (ActivePlayer != Null && ActivePlayer.SpawnStatus == CSmPlayer::ESpawnStatus::Spawned)
 					{
+						FrameBoostTeamLordBuff.Show();
+					
 						ManageTurretInfo(ActivePlayer);
+						ManageBuffs(ActivePlayer);
 						
 						declare netread Net_PlacingTurret for ActivePlayer = False;
 						Frame_TurretManagement.Visible = Net_PlacingTurret;
@@ -1471,6 +1551,7 @@ Text GetEnergyBarLayer()
 						Frame_Curse.Hide();
 						Frame_TurretInfo.Hide();
 						Frame_TurretManagement.Hide();
+						FrameBoostTeamLordBuff.Hide();
 						
 						/*CameraEagleEyeVision.Size.X = 200.;
 						CameraEagleEyeVision.Size.Y = 200.;
@@ -1520,13 +1601,14 @@ Void StartServer()
 	ActionId[EW_EngineerTurret] = (ActionList_Add("EngineerTurret"^".Action.gbx"));
 	ActionId[EW_TurretLvl1Weapon] = (ActionList_Add("TurretLvl1Weapon"^".Action.gbx"));
 	ActionId[EW_TurretTankWeapon] = (ActionList_Add("MegaPulser"^".Action.gbx"));
+	ActionId[EW_CrossBoom] = (ActionList_Add("CrossBoom"^".Action.gbx"));
 	ActionList_End();
 	
 	ItemList_Begin();
 	{
 		TurretLvl1Id								= ItemList_Add("STORMIUM\\FixTurretLvl1.Item.gbx");
-		//TurretLvl2Id								= ItemList_Add("STORMIUM\\FixTurretLvl1.Item.gbx");
-		//TurretLvl3Id								= ItemList_Add("STORMIUM\\FixTurretLvl1.Item.gbx");
+		/*TurretLvl2Id								= ItemList_Add("STORMIUM\\FixTurretLvl1.Item.gbx");
+		TurretLvl3Id								= ItemList_Add("STORMIUM\\FixTurretLvl1.Item.gbx");*/
 		TurretTank								= ItemList_Add("STORMIUM\\FixTurretTank.Item.gbx");
 		
 		ModelId[EM_Soldier]		= ItemList_Add("SoldierStruct.Item.gbx");
@@ -1535,6 +1617,7 @@ Void StartServer()
 		ModelId[EM_Medic]		= ItemList_Add("MedicStruct.Item.gbx" );
 		ModelId[EM_Ninja]		= ItemList_Add("NinjaStruct.Item.gbx");
 		ModelId[EM_Mage]		= ItemList_Add("MageStruct.Item.gbx");
+		ModelId[EM_Teamlord] = ItemList_Add("TeamlordStruct.Item.gbx");
 	}
 	ItemList_End();
 	
@@ -1610,6 +1693,23 @@ Void OnActionCustomEvent(CSmModeEvent e)
 				if (EventDamage > 1)
 					EventDamage /= 3;
 			}
+		}
+		if (victimKit == "teamlord")
+		{
+			declare nearAllies = 0;
+			foreach (player in Players)
+			{
+				if (player.CurrentClan == e.Victim.CurrentClan
+				&& player != e.Victim
+				&& MathLib::Distance(player.Position, e.Victim.Position) < 17.5)
+				{
+					nearAllies += 1;
+				}
+			}
+			
+			EventDamage -= MathLib::FloorInteger(EventDamage * (nearAllies * 0.3));
+			if (EventDamage < 0)
+				EventDamage = 0;
 		}
 		/*if (e.Victim.CurrentClan == 3 - AttackingClan
 		&& get_IsFinalGoal && UIManager.UIAll.CountdownEndTime > Now)
@@ -1698,9 +1798,9 @@ Void OnActionCustomEvent(CSmModeEvent e)
 	{
 		declare playerKit for e.Shooter = "";
 		if (playerKit != "medic")
-			e.Shooter.Armor += 30 * 100;
+			e.Shooter.Armor += 40 * 100;
 		else
-			e.Shooter.Armor += 15 * 100;
+			e.Shooter.Armor += 20 * 100;
 	}
 	if (e.Param1 == "heal_ball")
 	{
