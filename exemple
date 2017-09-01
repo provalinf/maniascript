@@ -1,6 +1,0 @@
-// On hit event
-foreach (Player in Players) {
-  if (Player != Event.Victim) {
-    Player.Armor -= Event.Damage;
-  }
-}
