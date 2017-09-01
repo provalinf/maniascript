@@ -1,0 +1,1883 @@
+#Include "Libs/Nadeo/Layers2.Script.txt" as Layers
+#Include "Libs/Nadeo/ShootMania/Score.Script.txt" as Score
+#Include "MathLib" as MathLib
+#Include "TextLib" as TextLib
+
+#Const C_TurretXPMax 15000
+
+#Const EGameKit_Soldier		"soldier"
+#Const EGameKit_Sniper			"sniper"
+#Const EGameKit_Medic			2
+#Const EGameKit_Engineer		"engineer"
+#Const EGameKit_Assassin		4
+
+#Const EM_Soldier "soldier"
+#Const EM_Engineer "engineer"
+#Const EM_Sniper "sniper"
+#Const EM_Medic "medic"
+#Const EM_Ninja "ninja"
+#Const EM_Mage "mage"
+
+#Const C_TurretType_Missiles 1
+#Const C_TurretType_Flak 2
+
+#Const EW_MultiPlasma "Multiplasma"
+#Const EW_MiniGun "Minigun"
+#Const EW_Grenade "Grenade"
+#Const EW_Shotgun "Shotgun"
+#Const EW_SelfHeal "SelfHeal"
+#Const EW_Snipergun "Snipergun"
+#Const EW_BouncingBall "BouncingBall"
+#Const EW_ADN "ADN"
+#Const EW_Knife "Knife"
+#Const EW_Medigun "Medigun"
+#Const EW_Forcefield "Forcefield"
+#Const EW_CurseTarget "CurseTarget"
+#Const EW_BumpHell "BumpHell"
+#Const EW_SmokeGrenade "SmokeGrenade"
+#Const EW_Disguise "Disguise"
+#Const EW_EagleEye "EagleEye"
+#Const EW_SwitchAction "SwitchAction"
+#Const EW_EngineerTurret "EngineerTurret"
+#Const EW_TurretLvl1Weapon "EW_TurretLvl1Weapon"
+#Const EW_TurretTankWeapon "MegaPulser"
+
+#Const C_TurretModelPath ""
+
+declare Ident[Text] ActionId;
+declare Ident[Text] ModelId;
+declare Ident TurretLvl1Id;
+declare Ident TurretLvl2Id;
+declare Ident TurretLvl3Id;
+declare Ident TurretTank;
+declare Ident[] ActiveTurrets;
+
+Void ApplyDisguiseProperty(CSmPlayer player, Text _disguiseKit)
+{
+	if (_disguiseKit == "soldier")
+	{
+		player.SpeedPower = 0.31;
+	}
+	if (_disguiseKit == "medic")
+	{
+		player.SpeedPower = 0.66;
+	}
+	if (_disguiseKit == "sniper")
+	{
+		player.SpeedPower = 0.75;
+	}
+	if (_disguiseKit == "mage")
+	{
+		player.SpeedPower = 0.7;
+	}
+	if (_disguiseKit == "ninja")
+	{
+		player.SpeedPower = 1.;
+	}
+}
+
+CSmPlayer Turret_Get(Ident turretId, Text loginFallback)
+{
+	if (BotPlayers.existskey(turretId))
+		return BotPlayers[turretId];
+	/*foreach (player in BotPlayers)
+	{
+		if (player.Driver != Null
+			&& player.Driver.Owner != Null
+			&& player.Driver.Owner.User != Null
+			&& player.Driver.Owner.User.Login == loginFallback)
+			return player;
+	}*/
+	
+	return Null;
+}
+
+Boolean Turret_IsValidTarget(Ident turretId, Text loginFallback, CSmPlayer player)
+{
+	declare Turret = Turret_Get(turretId, loginFallback);
+	if (Turret != Null && player != Null && !Spectators.exists(player))
+	{
+		declare IsDisguise for player = False;
+		if (player.CurrentClan == Turret.CurrentClan)
+		{		
+			if (!IsDisguise)
+				return False;
+		}
+		else if (IsDisguise)
+		{
+			return False;
+		}	
+		return True;
+	}
+	return False;
+}
+
+Void UpgradeTurret(Ident turretId, Text loginFallback)
+{
+	declare Turret = Turret_Get(turretId, loginFallback);
+	
+	declare Turret_Level for Turret = 0;
+	declare Turret_Type for Turret = 1;
+	if (Turret_Level < 3)
+		Turret_Level += 1;
+		
+	if (Turret_Level == 1)
+	{
+		if (Turret_Type == 1)
+			Turret.ArmorMax = 175 * 100;
+		else
+			Turret.ArmorMax = 250 * 100;
+	}
+	if (Turret_Level == 2)
+	{
+		if (Turret_Type == 1)
+		{
+			Turret.ArmorMax = 200 * 100;
+			Turret.Armor += 60 * 100;
+			
+			//Turret.ForceModelId = TurretLvl2Id;
+		}
+		else
+		{
+			Turret.ArmorMax = 300 * 100;
+			Turret.Armor += 60 * 100;		
+			Turret.AmmoGain = 1.5;
+		}
+	}
+	if (Turret_Level == 3)
+	{
+		if (Turret_Type == 1)
+		{
+			Turret.ArmorMax = 260 * 100;
+			Turret.Armor += 110 * 100;
+			
+			//Turret.ForceModelId = TurretLvl3Id;
+		}
+		else
+		{
+			Turret.ArmorMax = 400 * 100;
+			Turret.Armor += 120 * 100;	
+			Turret.AmmoGain = 2.25;	
+		}
+	}
+}
+
+Void SpawnTurret(CSmPlayer player, Integer turretType)
+{
+	declare Ident TurretId for player;
+	declare Turret = Turret_Get(TurretId, player.User.Login);
+	
+	if (Turret != Null)
+	{
+		UnspawnPlayer(Turret);
+		DestroyBotPlayer(Turret);
+	}
+	Turret <=> CreateBotPlayer(TurretLvl1Id, player.CurrentClan);
+	Turret.ArmorMax = 10 * 100;
+	if (turretType == C_TurretType_Missiles)
+		Turret.ArmorMax = 175 * 100;
+	
+	SpawnBotPlayer(Turret, player, 1000, <0., 0.15, 0.>, Now);
+	Turret.Armor = 120 * 100;
+	if (turretType == C_TurretType_Flak)
+	{
+		Turret.ArmorMax = 250 * 100;
+		Turret.Armor = 200 * 100;
+	}
+	
+	Turret.Driver.Behaviour = CSmPlayerDriver::ESmDriverBehaviour::Turret;
+	Turret.Driver.AttackFilter = CSmPlayerDriver::ESmAttackFilter::All;
+	Turret.Driver.IsFlying = False;
+	if (turretType == C_TurretType_Missiles)
+	{
+		Turret.Driver.DisengageDistance = 30.;
+		Turret.Driver.TargetMinDistance = 0.;
+		Turret.Driver.ShootRadius = 50.5;
+		Turret.Driver.AggroRadius = 50.5;
+		
+		Turret.Driver.ReactionTime = 500;
+		
+		Turret.Driver.Fov = 360.;
+	}
+	else if (turretType == C_TurretType_Flak)
+	{
+		Turret.Driver.DisengageDistance = 110.;
+		Turret.Driver.TargetMinDistance = 0.;
+		Turret.Driver.ShootRadius = 120.25;
+		Turret.Driver.AggroRadius = 120.25;	
+		
+		Turret.Driver.ReactionTime = 500;
+		
+		Turret.Driver.Fov = 720.;
+	}
+	Turret.Driver.ShootPeriodMin = 0;
+	Turret.Driver.ShootPeriodMax = 1;
+	Turret.Driver.Agressivity = 1000.;
+	Turret.Driver.Accuracy = 500.;
+	
+	if (turretType == 1)
+		ActionLoad(Turret, CSmMode::EActionSlot::Slot_A, ActionId[EW_TurretLvl1Weapon]);
+	if (turretType == 2)
+		ActionLoad(Turret, CSmMode::EActionSlot::Slot_A, ActionId[EW_TurretTankWeapon]);
+	
+	ActionBind(Turret, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
+	
+	TurretId = Turret.Id;
+	
+	declare netwrite Net_OwnerLogin for Turret = "";
+	Net_OwnerLogin = player.User.Login;
+	
+	declare playerKit for Turret = "";
+	playerKit = "turret";
+	
+	declare Turret_Level for Turret = 1;
+	Turret_Level = 1;
+	
+	declare Turret_Type for Turret = 1;
+	Turret_Type = turretType;
+	
+	ActiveTurrets.add(TurretId);
+}
+
+Void RemoveActions(CSmPlayer player)
+{
+	ActionLoad(player, CSmMode::EActionSlot::Slot_A, NullId);
+	if (player.IsBot)
+		return;
+		
+	ActionLoad(player, CSmMode::EActionSlot::Slot_B, NullId);
+	ActionLoad(player, CSmMode::EActionSlot::Slot_C, NullId);
+	ActionLoad(player, CSmMode::EActionSlot::Slot_D, NullId);
+	ActionLoad(player, CSmMode::EActionSlot::Slot_E, NullId);
+	ActionLoad(player, CSmMode::EActionSlot::Slot_F, NullId);
+}
+
+Void RemoveWeaponsIfPlayerIsNotSpawned(CSmPlayer player)
+{
+	if (player.SpawnStatus == CSmPlayer::ESpawnStatus::NotSpawned)
+	RemoveActions(player);
+}
+
+Text GetPlayerKit(CSmPlayer player)
+{
+	if (player == Null)
+		return "";
+
+	declare playerKit for player = Text;
+	return playerKit;
+}
+
+Boolean IsHeadShot(Vec3 shotPos, Vec3 _victimPos)
+{
+	declare victimPos = _victimPos;
+	victimPos.X = shotPos.X;
+	victimPos.Z = shotPos.Z;
+	
+	victimPos.Y += 1.7;
+	
+	declare dist = MathLib::Distance(shotPos, victimPos);
+	return dist < 0.425;
+}
+
+Void Yield()
+{
+	Layers::Attach("CGame.EnergyBar");
+	Layers::Attach("CGame.PlayerMarker");
+}
+
+declare Ident[] __botToRemoves;
+Void PlayLoop()
+{
+	foreach (turretId in ActiveTurrets)
+	{
+		if (!BotPlayers.existskey(turretId))
+			__botToRemoves.add(turretId);
+		else
+		{
+			declare bot <=> BotPlayers[turretId];
+			if (bot.Driver == Null)
+			{
+				__botToRemoves.add(turretId);
+			}
+			else if (bot.Driver.Owner == Null)
+			{
+				__botToRemoves.add(turretId);
+			}
+			else if (!Players.exists(bot.Driver.Owner))
+			{
+				__botToRemoves.add(turretId);
+			}
+			else
+			{
+				declare player <=> bot.Driver.Owner;
+				declare playerKit for player = "";
+				if (playerKit != "engineer")
+					__botToRemoves.add(turretId);
+				else if (bot.CurrentClan != player.CurrentClan)
+					__botToRemoves.add(turretId);
+				else if (bot.SpawnStatus == CSmPlayer::ESpawnStatus::NotSpawned)
+					__botToRemoves.add(turretId);
+			}
+		}
+		
+		if (!__botToRemoves.exists(turretId))
+		{
+			declare Turret = Turret_Get(turretId, "");
+			Turret.Driver.TargetsToAvoid.clear();
+			foreach (player in AllPlayers)
+			{
+				if (Spectators.existskey(player))
+					continue;
+					
+				declare kit = GetPlayerKit(player);
+				declare IsDisguise for player = False;
+				declare Turret_XP for Turret = 0;
+				declare Turret_TargetTime for Turret = 0;
+				
+				if (Turret_TargetTime + 5000 < Now && Turret_TargetTime != -1)
+				{
+					Turret_TargetTime = -1;
+					Turret.Driver.ForcedTarget = Null;
+				}
+				
+				if (player.CurrentClan == Turret.CurrentClan)
+				{
+					if (kit == "engineer")
+					{
+						if (MathLib::Distance(player.Position, Turret.Position) < 6.5)
+						{
+							Turret.Armor += 8;
+							Turret_XP += 4;
+							
+							if (Turret.Armor >= Turret.ArmorMax)
+							{
+								Turret_XP += 6;
+							}
+						}
+					}
+					
+					if (!IsDisguise)
+						Turret.Driver.TargetsToAvoid.add(player);
+				}
+				else if (IsDisguise)
+				{
+					Turret.Driver.TargetsToAvoid.add(player);
+				}
+			}
+		}
+	}
+	
+	foreach (botToRemove in __botToRemoves)
+	{
+		if (BotPlayers.existskey(botToRemove))
+		{
+			declare bot = BotPlayers[botToRemove];
+			UnspawnPlayer(bot);
+			DestroyBotPlayer(bot);
+		}
+		ActiveTurrets.remove(botToRemove);
+	}
+	__botToRemoves.clear();
+
+	foreach (player in AllPlayers)
+	{
+		if (Spectators.exists(player))
+			continue;
+	
+		RemoveWeaponsIfPlayerIsNotSpawned(player);
+	
+		declare ForcefieldVictimLogin for player = "";
+		declare ForcefieldStartTime for player = -1;
+		declare CurseVictimLogin for player = "";
+		declare CurseStartTime for player = -1;
+		declare BackgroundEnergyCur for player = 0;
+		declare BackgroundEnergyMax for player = 0;
+		declare SecondaryEnergyCur for player = 0;
+		declare SecondaryEnergyMax for player = 0;
+		declare SelfHeal_EnergyLeft for player = 0;
+		declare NeedFullRefresh for player = False;
+		declare IsUsingMinigun for player = False;
+		declare EagleEyeTime for player = 0;
+		declare playerKit for player = "";
+		
+		if (playerKit != "mage")
+		{
+			ForcefieldVictimLogin = "";
+			CurseVictimLogin = "";
+		}
+		
+		declare netwrite Net_ForcefieldVictimLogin for player = "";
+		declare netwrite Net_ForcefieldStartTime for player = -1;
+		declare netwrite Net_CurseVictimLogin for player = "";
+		declare netwrite Net_CurseStartTime for player = -1;
+		declare netwrite Net_BackgroundEnergyCur for player = 0;
+		declare netwrite Net_BackgroundEnergyMax for player = 0;
+		declare netwrite Net_SecondaryEnergyCur for player = 0;
+		declare netwrite Net_SecondaryEnergyMax for player = 0;
+		declare netwrite Net_SelfHeal_EnergyLeft for player = 0;
+		declare netwrite Net_NeedFullRefresh for player = False;
+		declare netwrite Net_IsUsingMinigun for player = False;
+		declare netwrite Net_EagleEyeTime for player = 0;
+		declare netwrite Net_PlayerKit for player = "";
+		declare netwrite Net_PlacingTurret for player = False;
+		
+		Net_ForcefieldVictimLogin = ForcefieldVictimLogin;
+		Net_ForcefieldStartTime = ForcefieldStartTime;
+		Net_CurseVictimLogin = CurseVictimLogin;
+		Net_CurseStartTime = CurseStartTime;
+		Net_BackgroundEnergyCur = BackgroundEnergyCur;
+		Net_BackgroundEnergyMax = BackgroundEnergyMax;
+		Net_SecondaryEnergyCur = SecondaryEnergyCur;
+		Net_SecondaryEnergyMax = SecondaryEnergyMax;
+		Net_SelfHeal_EnergyLeft = SelfHeal_EnergyLeft;
+		Net_NeedFullRefresh = NeedFullRefresh;
+		Net_IsUsingMinigun = IsUsingMinigun;
+		Net_EagleEyeTime = EagleEyeTime;
+		Net_PlayerKit = playerKit;
+		
+		declare netwrite Net_ForcefieldShooterLogin for player = "";
+		declare netwrite Net_CurseShooterLogin for player = "";
+		Net_ForcefieldShooterLogin = "";
+		Net_CurseShooterLogin = "";
+		
+		declare netwrite Net_IsDisguise for player = False;
+		declare IsDisguise for player = Net_IsDisguise;
+		if (playerKit != "ninja")
+			Net_IsDisguise = False;
+		if (playerKit != "sniper")
+		{
+			Net_EagleEyeTime = 0;
+			EagleEyeTime = 0;
+		}
+		if (playerKit != "engineer")
+			Net_PlacingTurret = False;
+		
+		IsDisguise = Net_IsDisguise;
+	}
+	
+	foreach (player in Players)
+	{
+		declare ForcefieldVictimLogin for player = "";
+		declare CurseVictimLogin for player = "";
+		
+		if (ForcefieldVictimLogin != ""
+		|| CurseVictimLogin != "")
+		{
+			foreach (__player in Players)
+			{
+				if (__player.User.Login == ForcefieldVictimLogin)
+				{
+					declare netwrite Net_ForcefieldShooterLogin for __player = "";
+					Net_ForcefieldShooterLogin = player.User.Login;
+				}
+				if (__player.User.Login == CurseVictimLogin)
+				{
+					declare netwrite Net_CurseShooterLogin for __player = "";
+					Net_CurseShooterLogin = player.User.Login;					
+				}
+			}
+		}
+		
+		declare playerKit = GetPlayerKit(player);
+		if (playerKit == "ninja"
+		&& player.CurrentClan != 0)
+		{
+			declare lastTick for player = 0;
+			declare netwrite Net_IsDisguise for player = False;
+			declare netwrite Net_DisguiseKit for player = "";
+			if (Net_IsDisguise)
+			{
+				if (Net_DisguiseKit != "")
+					player.ForceModelId = ModelId[TextLib::ToLowerCase(Net_DisguiseKit)];
+				ApplyDisguiseProperty(player, Net_DisguiseKit);
+				player.ForceColor = Teams[2 - player.CurrentClan].ColorPrimary;
+				if (Now > lastTick + 1250)
+				{
+					lastTick = Now;
+					player.Armor -= 300;
+				}
+			}
+			else
+			{
+				player.ForceModelId = ModelId[EM_Ninja];
+				player.SpeedPower = 1.;
+				player.ForceColor = Vec3;
+				Net_DisguiseKit = "";
+			}
+		}
+		else
+		{
+			player.SpeedPower = 1.;
+			player.ForceColor = Vec3;
+		}
+		
+		if (playerKit == "medic")
+		{
+			declare LastTimeHit for player = 0;
+			if (LastTimeHit + 3000 > Now)
+			{
+				player.ArmorReplenishGain = 0;
+			}
+			else
+			{
+				if (LastTimeHit + 3000 < Now)
+				{
+					player.ArmorReplenishGain = 1000;
+				}
+				if (LastTimeHit + 5000 < Now)
+				{
+					player.ArmorReplenishGain = 4000;
+				}
+				if (LastTimeHit + 10000 < Now)
+				{
+					player.ArmorReplenishGain = 15000;
+				}
+				if (LastTimeHit + 15000 < Now)
+				{
+					player.ArmorReplenishGain = 50000;
+				}
+			}
+		}
+		
+		if (playerKit == "engineer")
+		{
+			declare TurretId for player = NullId;
+			declare Turret <=> Turret_Get(TurretId, player.User.Login);
+			if (Turret != Null)
+			{
+				declare Turret_XP for Turret = 0;
+				declare Turret_Level for Turret = 1;
+				declare netwrite Net_Turret_XP for Turret = 0;
+				Net_Turret_XP = Turret_XP;
+				declare netwrite Net_TurretLevel for Turret = 0;
+				Net_TurretLevel = Turret_Level;
+				
+				if (MathLib::Distance(Turret.Position, player.Position) < 5)
+				{
+					Turret.Armor += 10;
+					Turret_XP += 2;
+					
+					if (Turret.Armor >= Turret.ArmorMax)
+						Turret_XP += 10;
+				}
+				
+				Turret_XP += 1;
+				if (Turret.Armor >= Turret.ArmorMax)
+						Turret_XP += 3;
+				
+				if (Turret_XP > C_TurretXPMax && Turret_Level < 3)
+				{
+					Turret_XP = 0;
+					UpgradeTurret(TurretId, player.User.Login);
+				}
+				else if (Turret_Level >= 3)
+					Turret_XP = C_TurretXPMax;
+			}
+		}
+			
+		declare netwrite Net_CurseShooterLogin for player = "";
+		if (Net_CurseShooterLogin != "")
+		{
+			player.SpeedPower = MathLib::Clamp(player.SpeedPower / 2.5, 0.1, 1.);
+		}
+			
+		if (playerKit == "sniper")
+		{
+			declare EagleEyeTime for player = 0;
+			if (EagleEyeTime > Now)
+			{
+				player.AmmoGain = 3.25;
+			}
+			else
+				player.AmmoGain = 1.;
+		}
+	}
+}
+
+Void SetKit(CSmPlayer player, Text _kit)
+{
+	declare kit = TextLib::ToLowerCase(_kit);
+	
+	// Clear things first
+	RemoveActions(player);
+	
+	ActionLoad(player, CSmMode::EActionSlot::Slot_D, ActionId[EW_SelfHeal]);
+	
+	player.ForceModelId = NullId;
+	player.SpeedPower = 1.;
+	player.ArmorReplenishGain = 0;
+	
+	declare netwrite Net_IsDisguise for player = False;
+	Net_IsDisguise = False;
+	
+	if (kit == "soldier")
+	{
+		player.ArmorMax = 310 * 100;
+		player.ForceModelId = ModelId[EM_Soldier];
+	
+		ActionLoad(player, CSmMode::EActionSlot::Slot_A, ActionId[EW_MultiPlasma]);
+		ActionLoad(player, CSmMode::EActionSlot::Slot_B, ActionId[EW_SwitchAction]);
+		ActionLoad(player, CSmMode::EActionSlot::Slot_C, ActionId[EW_Grenade]);
+		ActionLoad(player, CSmMode::EActionSlot::Slot_E, ActionId[EW_MiniGun]);
+	}
+	if (kit == "engineer")
+	{
+		player.ArmorMax = 170 * 100;
+		player.ForceModelId = ModelId[EM_Engineer];
+	
+		ActionLoad(player, CSmMode::EActionSlot::Slot_A, ActionId[EW_Shotgun]);
+		ActionLoad(player, CSmMode::EActionSlot::Slot_B, ActionId[EW_EngineerTurret]);
+		ActionLoad(player, CSmMode::EActionSlot::Slot_C, ActionId[EW_Grenade]);		
+		ActionLoad(player, CSmMode::EActionSlot::Slot_E, NullId);
+	}
+	if (kit == "sniper")
+	{
+		player.ArmorMax = 150 * 100;
+		player.ForceModelId = ModelId[EM_Sniper];
+	
+		ActionLoad(player, CSmMode::EActionSlot::Slot_A, ActionId[EW_Snipergun]);
+		ActionLoad(player, CSmMode::EActionSlot::Slot_B, ActionId[EW_EagleEye]);
+		ActionLoad(player, CSmMode::EActionSlot::Slot_C, ActionId[EW_Grenade]);	
+		ActionLoad(player, CSmMode::EActionSlot::Slot_E, NullId);	
+	}
+	if (kit == "medic")
+	{
+		player.ArmorMax = 170 * 100;
+		player.ForceModelId = ModelId[EM_Medic];
+	
+		ActionLoad(player, CSmMode::EActionSlot::Slot_A, ActionId[EW_ADN]);
+		ActionLoad(player, CSmMode::EActionSlot::Slot_B, ActionId[EW_SwitchAction]);
+		ActionLoad(player, CSmMode::EActionSlot::Slot_C, ActionId[EW_BouncingBall]);		
+		ActionLoad(player, CSmMode::EActionSlot::Slot_E, ActionId[EW_Medigun]);
+	}
+	if (kit == "ninja")
+	{
+		player.ArmorMax = 110 * 100;
+		player.ForceModelId = ModelId[EM_Ninja];
+		
+		ActionLoad(player, CSmMode::EActionSlot::Slot_A, ActionId[EW_Knife]);
+		ActionLoad(player, CSmMode::EActionSlot::Slot_B, ActionId[EW_Disguise]);
+		ActionLoad(player, CSmMode::EActionSlot::Slot_C, ActionId[EW_SmokeGrenade]);	
+		ActionLoad(player, CSmMode::EActionSlot::Slot_E, NullId);	
+	}
+	if (kit == "mage")
+	{
+		player.ArmorMax = 110 * 100;
+		player.ForceModelId = ModelId[EM_Mage];
+	
+		ActionLoad(player, CSmMode::EActionSlot::Slot_A, ActionId[EW_BumpHell]);
+		ActionLoad(player, CSmMode::EActionSlot::Slot_B, ActionId[EW_CurseTarget]);
+		ActionLoad(player, CSmMode::EActionSlot::Slot_C, ActionId[EW_Forcefield]);	
+		ActionLoad(player, CSmMode::EActionSlot::Slot_E, NullId);	
+	}
+	
+	declare playerKit for player = kit;
+	playerKit = kit;
+	
+	ActionBind(player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
+	ActionBind(player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::Consumable1);
+	ActionBind(player, CSmMode::EActionSlot::Slot_C, CSmMode::EActionInput::Consumable2);
+	ActionBind(player, CSmMode::EActionSlot::Slot_D, CSmMode::EActionInput::Activable1);
+	ActionBind(player, CSmMode::EActionSlot::Slot_E, CSmMode::EActionInput::None);
+	
+	if (kit == "soldier" || kit == "medic")
+	{
+		declare IsUsingMinigun for player = False;
+		if (IsUsingMinigun)
+		{
+			ActionBind(player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
+			ActionBind(player, CSmMode::EActionSlot::Slot_E, CSmMode::EActionInput::Weapon);
+		}
+		else
+		{
+			ActionBind(player, CSmMode::EActionSlot::Slot_E, CSmMode::EActionInput::None);
+			ActionBind(player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
+		}
+	}
+	
+	
+	/*if (get_IsFinalGoal && player.CurrentClan == 3 - AttackingClan)
+	{
+		player.ArmorMax = MathLib::NearestInteger(player.ArmorMax * 1.25);
+	}*/
+	
+	player.Armor = player.ArmorMax;
+}
+
+Text GetPlayerMarkerLayer()
+{
+	declare CC = "halign='center' valign='center'";
+
+	declare Instances = Text;
+	for (i, 0, 50)
+		Instances ^= """<frameinstance modelid="FrameModel_PlayerMarker" id="Frame_PlayerMarker#{{{i}}}"/>""";
+
+	return """
+	<framemodel id="FrameModel_PlayerMarker">
+		<label id="Label_PlayerClass" {{{CC}}} textembold="1" textprefix="$s" />
+		<quad z-index="0" sizen="10 5" style="BgsPlayerCard" substyle="ProgressBar" opacity=".4" colorize="000" pos="0 0"/>
+	</framemodel>
+	
+	{{{Instances}}}
+	
+	<script><!--
+		Text GetIcon(Text playerKit)
+		{
+			if (playerKit == "soldier")
+				return "";
+			if (playerKit == "engineer")
+				return "🔧";
+			if (playerKit == "sniper")
+				return "";
+			if (playerKit == "medic")
+				return "";
+			if (playerKit == "ninja")
+				return "🏃";				
+			if (playerKit == "mage")
+				return "";
+			if (playerKit == "turret")
+				return "";
+			return "";
+		}
+		
+		main()
+		{
+			declare Instances = CMlFrame[];
+			for (i, 0, 50)
+			{
+				declare frame <=> (Page.GetFirstChild("Frame_PlayerMarker#" ^ i) as CMlFrame);
+				declare label_PlayerClass for frame <=> (frame.GetFirstChild("Label_PlayerClass") as CMlLabel);
+				
+				Instances.add(frame);
+			}
+			
+			declare ClientMarkers for LocalUser = Text[Text];
+			
+			while(True)
+			{
+				sleep(200);
+				
+				ClientMarkers["players"] = "";
+				
+				declare EagleEyeTime = 0;
+				
+				declare ActivePlayer = CSmPlayer;
+				if (InputPlayer != Null)
+					ActivePlayer <=> InputPlayer;
+				if (GUIPlayer != Null)
+					ActivePlayer <=> GUIPlayer;
+				
+				declare i = 0;
+				foreach (player in Players)
+				{
+					declare canShow = True;
+					declare playerKit = "";
+					declare netread Net_PlayerKit for player = "";
+					declare GUIPlayerKit = "";
+					
+					playerKit = Net_PlayerKit;
+					if (ActivePlayer != Null)
+					{	
+						declare netread Net_EagleEyeTime for ActivePlayer = 0;
+						declare netread Net_PlayerKit as Net_GUIPlayerKit for ActivePlayer = "";
+						GUIPlayerKit = Net_GUIPlayerKit;
+						
+						EagleEyeTime = Net_EagleEyeTime;
+						
+						declare netread Net_IsDisguise for player = False;
+						if (Net_IsDisguise)
+						{
+							declare netread Net_DisguiseKit for player = "soldier";
+							playerKit = Net_DisguiseKit;
+							if (player.CurrentClan == ActivePlayer.CurrentClan)
+								canShow = False;
+						}
+						else
+						{
+							if (player.CurrentClan != ActivePlayer.CurrentClan)
+								canShow = False;
+						}
+						
+						if (player.User.Login == ActivePlayer.User.Login)
+							canShow = False;
+						if (player.SpawnStatus != CSmPlayer::ESpawnStatus::Spawned)
+							canShow = False;
+							
+						if (EagleEyeTime > ArenaNow)
+						{
+							canShow = player.CurrentClan != ActivePlayer.CurrentClan;
+							
+							if (player.SpawnStatus != CSmPlayer::ESpawnStatus::Spawned)
+								canShow = False;
+						}
+					}
+					
+					if (canShow)
+					{
+						declare frame <=> Instances[i];
+						declare label_PlayerClass for frame = CMlLabel;
+						declare frameIsUsed for frame = False;
+						frameIsUsed = True;
+					
+						label_PlayerClass.Value = "";
+						if ((GUIPlayerKit != "medic"
+						|| (GUIPlayerKit == "medic" && player.Armor > (player.ArmorMax / 4) + 100))
+						&& EagleEyeTime < ArenaNow)
+						{
+							ClientMarkers["players"] ^= "<marker visibility='WhenVisible' distmax='50' manialinkframeid='Frame_PlayerMarker#" ^ i ^ "' playerlogin='" ^ player.User.Login ^ "' />";
+							label_PlayerClass.Opacity = 1.;
+						}
+						else
+						{
+							ClientMarkers["players"] ^= "<marker visibility='Always' color='f00' manialinkframeid='Frame_PlayerMarker#" ^ i ^ "' playerlogin='" ^ player.User.Login ^ "' />";	
+							label_PlayerClass.Value ^= "$f00";
+							label_PlayerClass.Opacity = 0.25;
+						}
+						
+						label_PlayerClass.Value ^= "$n" ^ GetIcon(playerKit);
+						if (GUIPlayerKit == "medic")
+						{
+							label_PlayerClass.Value ^= " " ^ player.Armor * 0.01 ^ "";
+							label_PlayerClass.Opacity = 1.;
+						}
+						
+						frame.Show();
+						
+						i += 1;
+					}
+				}
+				
+				foreach (instance in Instances)
+				{
+					declare frameIsUsed for instance = False;
+					if (frameIsUsed)
+						frameIsUsed = False;
+					else
+						instance.Hide();
+				}
+			}
+		}
+	--></script>
+	""";
+}
+
+Text GetEnergyBarLayer()
+{
+	declare CC = "halign='center' valign='center'";
+	declare LC = "halign='left' valign='center'";
+	declare LC2 = "halign='left' valign='center2'";
+	declare RC = "halign='right' valign='center'";
+	declare RC2 = "halign='right' valign='center2'";
+
+	return """
+	<manialink version="3">
+		<framemodel id="FrameModel_Consumable">
+			<label {{{CC}}} id="Label_Icon" pos="0 0" textprefix="$s" text="➴"/>
+			<frame id="Frame_Loading">
+				<label {{{LC}}} id="Label_Pourcentage" pos="17.5 0" textprefix="$s" text="50%" textfont="OswaldMono" textsize="2"/>
+				<quad {{{LC}}} id="Quad_Progression" size="5 2.5" pos="2.5" bgcolor="fff" opacity="0.75"/>
+				<label {{{CC}}} pos="15 0" textprefix="$s" text="" textsize="1.75" />
+				<quad {{{CC}}} pos="2.5 0" size="0.25 3" bgcolor="fff" />
+				<quad {{{CC}}} pos="12.5 0" size="0.25 3" bgcolor="fff" />
+			</frame>
+			<frame id="Frame_Name">
+				<label {{{LC}}} id="Label_ActionName" size="500 10" pos="2.5 0" textprefix="$s" text="Grenade" textfont="Oswald" textsize="2"/>
+			</frame>
+		</framemodel>
+		
+		<frame pos="0 -65" id="Frame_SelfHeal" z-index="-1000">
+			<label {{{CC}}} id="Label_Icon" pos="-17.5 0" textprefix="$s" text=""/>
+			<frame id="Frame_Loading">
+				<label {{{LC}}} id="Label_Pourcentage" pos="24.5 0" textprefix="$s" text="50%" textfont="OswaldMono" textsize="2"/>
+				<quad {{{LC}}} id="Quad_Progression" size="5 2.5" pos="-12.5" bgcolor="fff" opacity="0.75"/>
+				<label {{{CC}}} pos="20.5 0" textprefix="$s" text="" textsize="1.75" />
+				<quad {{{CC}}} pos="17.5 0" size="0.25 3" bgcolor="fff" />
+				<quad {{{CC}}} pos="-12.5 0" size="0.25 3" bgcolor="fff" />
+			</frame>
+			<frame id="Frame_Name">
+				<label {{{CC}}} id="Label_ActionName" size="500 10" pos="2.5 0" textprefix="$s" text="Self Heal" textfont="Oswald" textsize="2"/>
+			</frame>
+		</frame>
+		
+		<frame id="Frame_WeaponName" pos="0 -16" scale="0.8">
+			<label {{{CC}}} textfont="OswaldMono" id="Label_WeaponName" pos="0 0" text="Minigun" z-index="1" textcolor="fff" />
+			
+			<label {{{CC}}} textfont="OswaldMono" id="Label_WeaponName" pos="0 0.25" text="Minigun" z-index="1" textcolor="000" opacity="0.5"/>
+			<label {{{CC}}} textfont="OswaldMono" id="Label_WeaponName" pos="0 -0.25" text="Minigun" z-index="1" textcolor="000" opacity="0.5"/>
+			<label {{{CC}}} textfont="OswaldMono" id="Label_WeaponName" pos="0.25 0" text="Minigun" z-index="1" textcolor="000" opacity="0.5"/>
+			<label {{{CC}}} textfont="OswaldMono" id="Label_WeaponName" pos="-0.25 0" text="Minigun" z-index="1" textcolor="000" opacity="0.5"/>
+			
+			<label {{{CC}}} textfont="OswaldMono" id="Label_WeaponName" pos="0 0.5" text="Minigun" z-index="1" textcolor="000" opacity="0.25"/>
+			<label {{{CC}}} textfont="OswaldMono" id="Label_WeaponName" pos="0 -0.5" text="Minigun" z-index="1" textcolor="000" opacity="0.25"/>
+			<label {{{CC}}} textfont="OswaldMono" id="Label_WeaponName" pos="0.5 0" text="Minigun" z-index="1" textcolor="000" opacity="0.25"/>
+			<label {{{CC}}} textfont="OswaldMono" id="Label_WeaponName" pos="-0.5 0" text="Minigun" z-index="1" textcolor="000" opacity="0.25"/>
+			
+			<label {{{CC}}} id="KeyName" style="TextButtonBig" text="A" pos="-7.5 -5" />
+			<label {{{CC}}} textfont="OswaldMono" pos="0 -5" text="$sPress '   ' to switch weapon" z-index="1" textcolor="fff" textsize="2"/>
+		</frame>
+		
+		<frame z-index="-1000">
+			<frameinstance pos="30 -70" id="Frame_Consumable1" modelid="FrameModel_Consumable"/>
+			<frameinstance pos="30 -75" id="Frame_Consumable2" modelid="FrameModel_Consumable"/>
+		</frame>
+		<frame z-index="10000">
+			<frame pos="0 -58" id="Frame_ForcefieldVictim">
+				<label {{{CC}}} pos="0 4" text="$f00$s" textsize="4.5" />
+				<label {{{CC}}} pos="0 -2" text="$f00$sForcefield (-8 /s)" textfont="Oswald" textsize="3"/>
+			</frame>
+			<frame pos="0 -48" id="Frame_Disguise">
+				<label {{{CC}}} id="Label_DisguiseKit" pos="0 4" text="$f00$s" textsize="4.5" />
+				<label {{{CC}}} id="Label_DisguiseText" pos="0 -2" text="$sDisguise" textfont="Oswald" textsize="3"/>
+			</frame>			
+			<frame pos="0 42" id="Frame_EagleEye">
+				<label {{{CC}}} id="Label_DisguiseKit" z-index="-1" pos="0 4.5" text="$20f$s" textsize="4.5" />
+				<label {{{CC}}} id="Label_DisguiseKit" z-index="1" pos="0 4" text="$fff$s" textsize="4.5" />
+				<label {{{CC}}} id="Label_DisguiseKit" pos="0 3.5" text="$f20$s" textsize="4.5" />
+				<label {{{CC}}} id="Label_DisguiseText" pos="0 -2" text="$sEAGLE EYE" textfont="Oswald" textsize="3"/>
+			</frame>	
+			
+		</frame>
+		
+		<frame id="Frame_Curse" pos="0 -71.5" z-index="1112" hidden="1">
+			<quad {{{CC}}} size="45 6" bgcolor="000" />
+			<label {{{CC}}} textfont="OswaldMono" text="CURSED" pos="0 0" z-index="1" textcolor="f00"/>
+		</frame>
+		
+		<frame id="Frame_Armors" pos="0 -71" z-index="1111">
+			<label {{{CC}}} textfont="OswaldMono" id="Label_ArmorsLeft" pos="0 0" text="0" z-index="1" textcolor="fff"/>
+			
+			<label {{{CC}}} textfont="OswaldMono" id="Label_ArmorsLeft" pos="0 0.25" text="0" z-index="1" textcolor="000" opacity="0.5"/>
+			<label {{{CC}}} textfont="OswaldMono" id="Label_ArmorsLeft" pos="0 -0.25" text="0" z-index="1" textcolor="000" opacity="0.5"/>
+			<label {{{CC}}} textfont="OswaldMono" id="Label_ArmorsLeft" pos="0.25 0" text="0" z-index="1" textcolor="000" opacity="0.5"/>
+			<label {{{CC}}} textfont="OswaldMono" id="Label_ArmorsLeft" pos="-0.25 0" text="0" z-index="1" textcolor="000" opacity="0.5"/>
+			
+			<label {{{CC}}} textfont="OswaldMono" id="Label_ArmorsLeft" pos="0 0.5" text="0" z-index="1" textcolor="000" opacity="0.25"/>
+			<label {{{CC}}} textfont="OswaldMono" id="Label_ArmorsLeft" pos="0 -0.5" text="0" z-index="1" textcolor="000" opacity="0.25"/>
+			<label {{{CC}}} textfont="OswaldMono" id="Label_ArmorsLeft" pos="0.5 0" text="0" z-index="1" textcolor="000" opacity="0.25"/>
+			<label {{{CC}}} textfont="OswaldMono" id="Label_ArmorsLeft" pos="-0.5 0" text="0" z-index="1" textcolor="000" opacity="0.25"/>
+		</frame>
+		
+		
+		<!-- Interface de sélection des tourelles -->
+		<frame id="Frame_TurretManagement" pos="-80 36" z-index="10000">
+			<label z-index="1" text="$t$s Place turret" pos="-36.1 16.7" sizen="44 5.88" textsize="1.8" />
+			<quad z-index="1" pos="-36 11.5" bgcolor="EEEEEEFF" size="72 0.2" opacity=".8" halign="left" valign="center"/>
+
+		<frame pos="3.92 -1.6" z-index="1">
+			<quad z-index="0" sizen="32.3 20.3" style="Bgs1" substyle="BgButtonGrayed" opacity=".0" pos="-38 10.9"/>
+			<quad z-index="1" sizen="32.3 20.3" style="BgsPlayerCard" substyle="ProgressBar" opacity=".6" colorize="000" pos="-38 10.9"/>
+			<quad z-index="2" sizen="32.3 6.86" style="BgsPlayerCard" substyle="ProgressBar" opacity=".6" colorize="000" pos="-38 10.9"/>
+			<label z-index="3" text="$iMissiles $z$sTurret" pos="-22.2 7.58" sizen="25.4 4.6" textsize="1.8" halign="center" valign="center"/>
+			<label z-index="2" style="TextButtonBig" text="PRESS $o2" pos="-30.8 2.13" sizen="19.1 4.26" textsize="2" opacity="0.5"/>
+			<label z-index="2" text="$sOptimized for ground attacks" pos="-36.6 -3.6" sizen="29.4 4.6" textsize="1.8" />
+		</frame>
+		
+		<frame pos="39.8 -1.6" z-index="1">
+			<quad z-index="0" sizen="32.3 20.3" style="Bgs1" substyle="BgButtonGrayed" opacity=".0" pos="-38 10.9"/>
+			<quad z-index="1" sizen="32.3 20.3" style="BgsPlayerCard" substyle="ProgressBar" opacity=".6" colorize="000" pos="-38 10.9"/>
+			<quad z-index="2" sizen="32.3 6.86" style="BgsPlayerCard" substyle="ProgressBar" opacity=".6" colorize="000" pos="-38 10.9"/>
+			<label z-index="3" text="$iFlak $z$sTurret" pos="-22.2 7.58" sizen="25.4 4.6" textsize="1.8"  halign="center" valign="center"/>
+			<label z-index="2" style="TextButtonBig" text="PRESS $o3" pos="-30.8 2.13" sizen="19.1 4.26" textsize="2" opacity="0.5"/>
+			<label z-index="2" text="$sOptimized for air attacks" pos="-36.6 -3.6" sizen="29.4 4.6" textsize="1.8" />
+		</frame>
+			
+			<quad z-index="0" sizen="79.3 33.3" style="BgsPlayerCard" substyle="ProgressBar" opacity=".8" colorize="000" pos="0.0421 2.71" halign="center" valign="center"/>
+			<quad z-index="-1" sizen="79.3 33.3" style="Bgs1" substyle="BgButtonGrayed" opacity=".0" pos="0.0421 2.71" halign="center" valign="center"/>
+		</frame>
+		
+		
+		
+		
+		
+		
+		<frame id="Frame_TurretInfo" pos="155 40" z-index="1111">
+			<label {{{RC}}} text="$sTURRET" textfont="OswaldMono" pos="0 7" textsize="6"/>
+		
+			<frame id="Frame_TurretHealthInfo">
+				<quad id="Quad_TurretAmmo" {{{RC}}} bgcolor="25f" sizen="40 1.5" pos="0 -1.75" />
+				<quad id="Quad_TurretHealth" {{{RC}}} bgcolor="4a4" sizen="40 5" />
+				<quad {{{RC}}} bgcolor="000" sizen="40 5" pos="0.5 -0.5"/>
+				
+				<label id="Label_TurretHealth" z-index="1" {{{RC2}}} textprefix="$o$i" textfont="OswaldMono" textcolor="fff" sizen="40 5" pos="-0.5"/>
+				<label id="Label_TurretHealthShadow" z-index="1" {{{RC2}}} textprefix="$o$i" textfont="OswaldMono" textcolor="000" sizen="40 5" pos="-0.25 -0.25"/>
+			</frame>
+			<frame id="Frame_TurretLevelInfo" pos="0 -6.5">
+				<quad {{{RC}}} id="Quad_TurretXP" bgcolor="999" opacity="0.9" sizen="20 2.5" />
+				<quad {{{RC}}} bgcolor="555" opacity="0.75" sizen="20 2.5" />
+				<quad {{{RC}}} bgcolor="000" sizen="20 2.5" pos="0.5 -0.5"/>
+				
+				<label z-index="1" {{{RC2}}} id="Label_TurretXP" textprefix="$s$o$i" text="XP" textsize="1" textfont="OswaldMono" textcolor="fff" sizen="40 5" pos="-0.5"/>
+				
+				<label z-index="2" {{{LC2}}} id="Label_TurretLevel" textprefix="$s" text="$s[1]" textsize="2" textfont="OswaldMono" textcolor="fff" sizen="40 5" pos="-25"/>
+			</frame>
+		</frame>
+		
+		<!--<camera hide="1" id="CameraEagleEyeVision" z-index="-1000000" {{{CC}}} sizen="300 300" />-->
+		
+		<script><!--
+			#Include "MathLib" as MathLib
+			
+			declare CMlFrame[] Frames_Consumable;
+			declare CMlFrame Frame_Forcefield;
+			declare CMlFrame Frame_Disguise;
+			declare CMlFrame Frame_Armors;
+			declare CMlFrame Frame_WeaponName;
+			declare CMlFrame Frame_EagleEye;
+			declare CMlFrame Frame_Curse;
+			declare CMlFrame Frame_TurretManagement;
+			
+			declare CMlFrame Frame_TurretInfo;
+			declare CMlLabel Label_TurretHealth;
+			declare CMlLabel Label_TurretHealthShadow;
+			declare CMlQuad Quad_TurretHealth;
+			declare CMlQuad Quad_TurretAmmo;
+			declare CMlQuad Quad_TurretXP;
+			declare CMlLabel Label_TurretLevel;
+			declare CMlLabel Label_TurretXP;
+			
+			//declare CMlCamera CameraEagleEyeVision;
+			
+			declare Real TimeDelta;
+			
+			Text GetIcon(Text playerKit)
+			{
+				if (playerKit == "soldier")
+					return "";
+				if (playerKit == "engineer")
+					return "🔧";
+				if (playerKit == "sniper")
+					return "";
+				if (playerKit == "medic")
+					return "";
+				if (playerKit == "ninja")
+					return "🏃";				
+				if (playerKit == "mage")
+					return "";
+				return "";
+			}
+			
+			Real Lerp(Real a, Real b, Real t)
+			{
+				return a * (1 - t) + b * t;
+			}
+			
+			Void ManageConsumables()
+			{
+				declare i = 0;
+				foreach (frame in Frames_Consumable)
+				{
+					i += 1;
+					
+					if (GUIPlayer == Null)
+					{
+						frame.Hide();
+						continue;
+					}
+					
+					frame.Show();	
+					
+					declare CMlFrame frame_Loading for frame;
+					declare CMlFrame frame_Name for frame;
+					declare CMlLabel label_Pourcentage for frame;
+					declare CMlLabel label_ActionName for frame;		
+					declare CMlQuad quad_Progression for frame;
+					declare CMlLabel label_Icon for frame;
+					
+					declare netread Net_PlayerKit for GUIPlayer = "";
+					declare netread Net_BackgroundEnergyCur for GUIPlayer = 0;
+					declare netread Net_BackgroundEnergyMax for GUIPlayer = 0;
+					declare netread Net_SecondaryEnergyCur for GUIPlayer = 0;
+					declare netread Net_SecondaryEnergyMax for GUIPlayer = 0;
+					declare netread Net_SelfHeal_EnergyLeft for GUIPlayer = 0;
+					declare netread Net_NeedFullRefresh for GUIPlayer = False;
+					declare netread Net_IsUsingMinigun for GUIPlayer = False;
+					declare Energy = 0.;
+					declare EnergyMax = 0.;
+					
+					if (i == 1)
+					{
+						Energy = Net_SecondaryEnergyCur + 0.;
+						EnergyMax = Net_SecondaryEnergyMax + 0.;
+					}
+					else if (i == 2)
+					{
+						Energy = Net_BackgroundEnergyCur + 0.;
+						EnergyMax = Net_BackgroundEnergyMax + 0.;							
+					}
+					else if (i == 3)
+					{
+						Energy = Net_SelfHeal_EnergyLeft + 0.;
+						EnergyMax = 8000.;
+					}
+					
+					if (EnergyMax > Energy)
+						label_Icon.Value = "$a00";
+					else
+						label_Icon.Value = "$4a4";
+					
+					label_ActionName.Value = "$4a4";
+					
+					if (i == 3)
+						label_ActionName.Value ^= "Self heal";
+					
+					if (Net_PlayerKit == "soldier"
+						|| Net_PlayerKit == "engineer"
+						|| Net_PlayerKit == "sniper")
+					{
+						if (i == 2)
+							{ label_ActionName.Value ^= "Grenade"; label_Icon.Value ^= ""; }
+					}
+					if (Net_PlayerKit == "soldier")
+					{
+						if (i == 1)
+						{
+							if (Net_IsUsingMinigun)
+								label_ActionName.Value ^= "MultiPlasma";
+							else
+								label_ActionName.Value ^= "MiniGun";
+								
+							label_Icon.Value ^= "";
+						}
+					}
+					else if (Net_PlayerKit == "engineer")
+					{
+						if (i == 1)
+							{ label_ActionName.Value ^= "Turret management"; label_Icon.Value ^= ""; }
+					}
+					else if (Net_PlayerKit == "sniper")
+					{
+						if (i == 1)
+						{
+							label_ActionName.Value ^= "Eagle Eye";
+							label_Icon.Value ^= "";
+						}
+					}
+					else if (Net_PlayerKit == "medic")
+					{
+						if (i == 1)
+						{
+							if (Net_IsUsingMinigun)
+								label_ActionName.Value ^= "ADN";
+							else
+								label_ActionName.Value ^= "Medigun";
+								
+							label_Icon.Value ^= "";
+						}
+						if (i == 2)
+							{ label_ActionName.Value ^= "Healing Ball"; label_Icon.Value ^= ""; }
+					}
+					else if (Net_PlayerKit == "ninja")
+					{
+						if (i == 1)
+							{ label_ActionName.Value ^= "Disguise"; label_Icon.Value ^= "👥"; }
+						if (i == 2)
+							{ label_ActionName.Value ^= "Smoke grenade"; label_Icon.Value ^= ""; }
+					}
+					else if (Net_PlayerKit == "mage")
+					{
+						if (i == 1)
+							{ label_ActionName.Value ^= "Curse Target"; label_Icon.Value ^= ""; }
+						if (i == 2)
+							{ label_ActionName.Value ^= "Forcefield"; label_Icon.Value ^= ""; }
+					}
+					else
+						label_ActionName.Value ^= "Unknown";
+						
+					label_ActionName.Value ^= " is 100% ready";
+						
+					if (EnergyMax > Energy)
+					{
+						frame_Loading.Show();
+						frame_Name.Hide();
+						
+						if (i == 3)
+							label_Icon.SetText("$a00");
+						
+						declare energyPourcentage = Energy / EnergyMax;
+						energyPourcentage *= 1000;
+						
+						declare factorIfSelfHeal = 1.;
+						if (i == 3)
+							factorIfSelfHeal = 3.;
+						
+						quad_Progression.Size.X = Lerp(quad_Progression.Size.X, (energyPourcentage / 100.) * factorIfSelfHeal, TimeDelta * 12.5);							
+						label_Pourcentage.SetText(MathLib::FloorInteger((quad_Progression.Size.X * 10) / factorIfSelfHeal) ^ "%");
+						
+						if (i == 1 && Net_PlayerKit == "soldier" && !Net_IsUsingMinigun)
+						{
+							if (Net_NeedFullRefresh)
+							{
+								label_Pourcentage.Value ^= " $29fOverdose of Stormium! Cooling down.";
+							}
+							else if (Energy <= 2250.)
+								label_Pourcentage.Value ^= " $f00!!! WARNING !!!";
+						}
+					}
+					else
+					{
+						frame_Loading.Hide();
+						frame_Name.Show();
+						
+						if (i == 3)
+							label_Icon.SetText("$4a4");
+					}
+				}
+			}
+			
+			Void ManageForcefieldInfo()
+			{
+				declare ForcefieldVictim = CSmPlayer;
+				declare ForcefieldShooter = CSmPlayer;
+				declare ForcefieldStartTime = 0;
+			
+				if (GUIPlayer != Null)
+				{
+					declare netread Net_ForcefieldVictimLogin for GUIPlayer = Text;
+					declare netread Net_ForcefieldShooterLogin for GUIPlayer = Text;
+					
+					foreach (player in Players)
+					{
+						if (player.User.Login == Net_ForcefieldVictimLogin)
+						{
+							ForcefieldVictim <=> player;
+						}
+						if (player.User.Login == Net_ForcefieldShooterLogin)
+						{
+							ForcefieldShooter <=> player;
+							
+							declare netread Net_ForcefieldStartTime for player = 0;
+							ForcefieldStartTime = Net_ForcefieldStartTime;
+						}
+					}
+					
+					if (ForcefieldShooter != Null)
+						Frame_Forcefield.Show();
+					else
+						Frame_Forcefield.Hide();
+				}
+				else
+					Frame_Forcefield.Hide();		
+			}
+			
+			Void ManageDisguiseInfo()
+			{			
+				if (GUIPlayer != Null && GUIPlayer.CurrentClan > 0)
+				{
+					declare netread Net_IsDisguise for GUIPlayer = False;
+					declare netread Net_DisguiseKit for GUIPlayer = "";
+					declare label_DisguiseKit for Frame_Disguise = CMlLabel;
+					declare label_DisguiseText for Frame_Disguise = CMlLabel;
+					
+					label_DisguiseKit.Value = "$s" ^ Teams[(3 - GUIPlayer.CurrentClan) - 1].ColorText;
+					label_DisguiseKit.Value ^= GetIcon(Net_DisguiseKit);
+					label_DisguiseText.TextColor = Teams[(3 - GUIPlayer.CurrentClan) - 1].ColorPrimary;
+					
+					if (Net_IsDisguise)
+						Frame_Disguise.Show();
+					else
+						Frame_Disguise.Hide();
+				}
+				else
+					Frame_Disguise.Hide();		
+			}
+		
+			Void ManageTurretInfo(CSmPlayer _player)
+			{
+				declare myTurret = CSmPlayer;
+				foreach (player in Players)
+				{
+					declare netread Net_OwnerLogin for player = "";
+					if (player.IsBot && Net_OwnerLogin == _player.User.Login)
+					{
+						myTurret <=> player;
+					}
+				}
+				
+				Frame_TurretInfo.Visible = myTurret != Null;
+				if (myTurret != Null)
+				{
+					declare netread Net_Turret_XP for myTurret = 0;
+					declare netread Net_TurretLevel for myTurret = 1;
+				
+					Label_TurretHealth.SetText((myTurret.Armor * 0.01) ^ " / " ^ (myTurret.ArmorMax * 0.01));
+					Label_TurretHealthShadow.SetText((myTurret.Armor * 0.01) ^ " / " ^ (myTurret.ArmorMax * 0.01));
+				
+				
+					declare clamp = MathLib::Clamp(myTurret.Armor, 1, myTurret.ArmorMax) + 0.;
+					declare clampMax = MathLib::Clamp(myTurret.ArmorMax, 1, myTurret.ArmorMax) + 0.;
+					
+					Quad_TurretHealth.Size.X = (clamp / clampMax) * 40;
+					
+					clamp = MathLib::Clamp(myTurret.CurAmmo, 1, myTurret.CurAmmoMax) + 0.;
+					clampMax = MathLib::Clamp(myTurret.CurAmmoMax, 1, myTurret.CurAmmoMax) + 0.;
+					
+					Quad_TurretAmmo.Size.X = (clamp / clampMax) * 40;
+					
+					clamp = MathLib::Clamp(Net_Turret_XP, 1, {{{C_TurretXPMax}}}) + 0.;
+					clampMax = MathLib::Clamp({{{C_TurretXPMax}}}, 1, {{{C_TurretXPMax}}}) + 0.;
+					
+					Quad_TurretXP.Size.X = (clamp / clampMax) * 20;
+					
+					Label_TurretXP.SetText(Net_Turret_XP ^ "XP");
+					Label_TurretLevel.SetText("Lvl." ^ Net_TurretLevel);
+				}
+			}
+		
+			main()
+			{
+				Frames_Consumable = CMlFrame[];
+				for (i, 1, 3)
+				{
+					declare CMlFrame frame;
+					if (i < 3)
+						frame <=> (Page.GetFirstChild("Frame_Consumable" ^ i) as CMlFrame);
+					else
+						frame <=> (Page.GetFirstChild("Frame_SelfHeal") as CMlFrame);
+					declare frame_Loading for frame <=> (frame.GetFirstChild("Frame_Loading") as CMlFrame);
+					declare frame_Name for frame <=> (frame.GetFirstChild("Frame_Name") as CMlFrame);
+					declare label_Icon for frame <=> (frame.GetFirstChild("Label_Icon") as CMlLabel);
+					declare label_Pourcentage for frame <=> (frame.GetFirstChild("Label_Pourcentage") as CMlLabel);
+					declare label_ActionName for frame <=> (frame.GetFirstChild("Label_ActionName") as CMlLabel);
+					declare quad_Progression for frame <=> (frame.GetFirstChild("Quad_Progression") as CMlQuad);
+					
+					frame_Loading.Hide();
+					frame_Name.Hide();
+					
+					Frames_Consumable.add(frame);
+				}
+				
+				Frame_Forcefield <=> (Page.GetFirstChild("Frame_ForcefieldVictim") as CMlFrame);
+				Frame_Disguise <=> (Page.GetFirstChild("Frame_Disguise") as CMlFrame);
+				Frame_Armors <=> (Page.GetFirstChild("Frame_Armors") as CMlFrame);
+				Frame_WeaponName <=> (Page.GetFirstChild("Frame_WeaponName") as CMlFrame);
+				Frame_EagleEye <=> (Page.GetFirstChild("Frame_EagleEye") as CMlFrame);
+				Frame_Curse <=> (Page.GetFirstChild("Frame_Curse") as CMlFrame);
+				Frame_TurretInfo <=> (Page.GetFirstChild("Frame_TurretInfo") as CMlFrame);
+				Frame_TurretManagement <=> (Page.GetFirstChild("Frame_TurretManagement") as CMlFrame);
+				declare label_DisguiseKit for Frame_Disguise <=> (Frame_Disguise.GetFirstChild("Label_DisguiseKit") as CMlLabel);
+				declare label_DisguiseText for Frame_Disguise <=> (Frame_Disguise.GetFirstChild("Label_DisguiseText") as CMlLabel);
+				declare labels_ArmorsLeft for Frame_Armors = CMlLabel[];
+				declare labels_WeaponName for Frame_WeaponName = CMlLabel[];
+				declare label_KeyName for Frame_WeaponName <=> (Frame_WeaponName.GetFirstChild("KeyName") as CMlLabel);
+				
+				Label_TurretHealth <=> (Page.GetFirstChild("Label_TurretHealth") as CMlLabel);
+				Label_TurretHealthShadow <=> (Page.GetFirstChild("Label_TurretHealthShadow") as CMlLabel);
+				Quad_TurretHealth <=> (Page.GetFirstChild("Quad_TurretHealth") as CMlQuad);
+				Quad_TurretAmmo <=> (Page.GetFirstChild("Quad_TurretAmmo") as CMlQuad);
+				Quad_TurretXP <=> (Page.GetFirstChild("Quad_TurretXP") as CMlQuad);
+				Label_TurretXP <=> (Page.GetFirstChild("Label_TurretXP") as CMlLabel);
+				Label_TurretLevel <=> (Page.GetFirstChild("Label_TurretLevel") as CMlLabel);
+				
+//				CameraEagleEyeVision <=> (Page.GetFirstChild("CameraEagleEyeVision") as CMlCamera);
+				
+				foreach (control in Frame_Armors.Controls)
+				{
+					if (control.ControlId == "Label_ArmorsLeft")
+						labels_ArmorsLeft.add((control as CMlLabel));
+				}
+				foreach (control in Frame_WeaponName.Controls)
+				{
+					if (control.ControlId == "Label_WeaponName")
+						labels_WeaponName.add((control as CMlLabel));
+				}
+				
+				declare Integer lastTimeDelta = Now;
+				
+				while(True)
+				{
+					yield;
+					sleep(20);
+					
+					TimeDelta = (Now - lastTimeDelta) / 1000.;
+					lastTimeDelta = Now;
+					
+					ManageConsumables();
+					ManageForcefieldInfo();
+					ManageDisguiseInfo();
+					
+					declare ActivePlayer = CSmPlayer;
+					declare CurrentArmors = 0;
+					declare MaxArmors = 0;
+					if (InputPlayer != Null)
+						ActivePlayer <=> InputPlayer;
+					if (GUIPlayer != Null)
+						ActivePlayer <=> GUIPlayer;
+					if (ActivePlayer != Null && ActivePlayer.SpawnStatus == CSmPlayer::ESpawnStatus::Spawned)
+					{
+						ManageTurretInfo(ActivePlayer);
+						
+						declare netread Net_PlacingTurret for ActivePlayer = False;
+						Frame_TurretManagement.Visible = Net_PlacingTurret;
+					
+						declare netread Net_EagleEyeTime for ActivePlayer = 0;
+						Frame_EagleEye.Visible = Net_EagleEyeTime > ArenaNow;
+						/*CameraEagleEyeVision.Visible = Frame_EagleEye.Visible;
+						if (Frame_EagleEye.Visible)
+						{
+							CameraEagleEyeVision.Size.X = 320.;
+							CameraEagleEyeVision.Size.Y = 320.;
+						}
+						else
+						{
+							CameraEagleEyeVision.Size.X = 200.;
+							CameraEagleEyeVision.Size.Y = 200.;						
+						}*/
+						
+						declare netread Net_CurseShooterLogin for ActivePlayer = "";
+						Frame_Curse.Visible = Net_CurseShooterLogin != "";
+					
+						CurrentArmors = ActivePlayer.Armor;
+						MaxArmors = ActivePlayer.ArmorMax;
+						
+						declare netread Net_PlayerKit for ActivePlayer = "";
+						if ((Net_PlayerKit == "soldier" || Net_PlayerKit == "medic") && ActivePlayer.SpawnStatus == CSmPlayer::ESpawnStatus::Spawned)
+						{
+							Frame_WeaponName.Show();
+							
+							declare netread Net_IsUsingMinigun for ActivePlayer = False;
+							declare labels_WeaponName for Frame_WeaponName = CMlLabel[];
+							declare label_KeyName for Frame_WeaponName = CMlLabel;
+							foreach (label in labels_WeaponName)
+							{
+								if (Net_IsUsingMinigun)
+								{
+									if (Net_PlayerKit == "soldier")
+										label.SetText("Minigun");
+									if (Net_PlayerKit == "medic")
+										label.SetText("Medigun (Healing)");
+								}
+								else
+								{
+									if (Net_PlayerKit == "soldier")
+										label.SetText("MultiPlasma");
+									if (Net_PlayerKit == "medic")
+										label.SetText("ADN (Offence)");
+								}
+							}
+							
+							
+							if (ActivePlayer.User.Language == "fr")
+								label_KeyName.SetText("A");
+							else
+								label_KeyName.SetText("Q");
+						}
+						else
+							Frame_WeaponName.Hide();
+					}
+					else
+					{
+						Frame_EagleEye.Hide();
+						Frame_WeaponName.Hide();
+						Frame_Curse.Hide();
+						Frame_TurretInfo.Hide();
+						Frame_TurretManagement.Hide();
+						
+						/*CameraEagleEyeVision.Size.X = 200.;
+						CameraEagleEyeVision.Size.Y = 200.;
+						CameraEagleEyeVision.Visible = Frame_EagleEye.Visible;*/
+					}
+						
+					if (CurrentArmors > 0)
+					{
+						Frame_Armors.Show();
+					
+						declare labels_ArmorsLeft for Frame_Armors = CMlLabel[];
+						foreach (label in labels_ArmorsLeft)
+						{
+							label.SetText(MathLib::FloorInteger(CurrentArmors * 0.01) ^ "/" ^ MathLib::FloorInteger(MaxArmors * 0.01));
+						}
+					}
+					else
+						Frame_Armors.Hide();
+				}
+			}
+		--></script>
+	</manialink>
+	""";
+}
+
+Void StartServer()
+{
+	ActionList_Begin();
+	ActionId["Megaplayer"] = (ActionList_Add("MegaPlayer"^".Action.gbx"));
+	ActionId[EW_MultiPlasma] = (ActionList_Add("MultiPlasma"^".Action.gbx"));
+	ActionId[EW_Shotgun] = (ActionList_Add("Shotgun"^".Action.gbx"));
+	ActionId[EW_MiniGun] = (ActionList_Add("Minigun"^".Action.gbx"));
+	ActionId[EW_Grenade] = (ActionList_Add("Grenade"^".Action.gbx"));
+	ActionId[EW_SelfHeal] = (ActionList_Add("SelfHeal"^".Action.gbx"));
+	ActionId[EW_Snipergun] = (ActionList_Add("Snipergun"^".Action.gbx"));
+	ActionId[EW_BouncingBall] = (ActionList_Add("BouncingBall"^".Action.gbx"));
+	ActionId[EW_ADN] = (ActionList_Add("ADN"^".Action.gbx"));
+	ActionId[EW_Knife] = (ActionList_Add("Knife"^".Action.gbx"));
+	ActionId[EW_Medigun] = (ActionList_Add("Medigun"^".Action.gbx"));
+	ActionId[EW_Forcefield] = (ActionList_Add("Forcefield"^".Action.gbx"));
+	ActionId[EW_CurseTarget] = (ActionList_Add("Curse"^".Action.gbx"));
+	ActionId[EW_BumpHell] = (ActionList_Add("BumpHell"^".Action.gbx"));
+	ActionId[EW_SmokeGrenade] = (ActionList_Add("SmokeGrenade"^".Action.gbx"));
+	ActionId[EW_Disguise] = (ActionList_Add("Disguise"^".Action.gbx"));
+	ActionId[EW_EagleEye] = (ActionList_Add("EagleEye"^".Action.gbx"));
+	ActionId[EW_SwitchAction] = (ActionList_Add("SwitchAction"^".Action.gbx"));
+	ActionId[EW_EngineerTurret] = (ActionList_Add("EngineerTurret"^".Action.gbx"));
+	ActionId[EW_TurretLvl1Weapon] = (ActionList_Add("TurretLvl1Weapon"^".Action.gbx"));
+	ActionId[EW_TurretTankWeapon] = (ActionList_Add("MegaPulser"^".Action.gbx"));
+	ActionList_End();
+	
+	ItemList_Begin();
+	{
+		TurretLvl1Id								= ItemList_Add("STORMIUM\\FixTurretLvl1.Item.gbx");
+		//TurretLvl2Id								= ItemList_Add("STORMIUM\\FixTurretLvl1.Item.gbx");
+		//TurretLvl3Id								= ItemList_Add("STORMIUM\\FixTurretLvl1.Item.gbx");
+		TurretTank								= ItemList_Add("STORMIUM\\FixTurretTank.Item.gbx");
+		
+		ModelId[EM_Soldier]		= ItemList_Add("SoldierStruct.Item.gbx");
+		ModelId[EM_Engineer]		= ItemList_Add("EngineerStruct.Item.gbx");
+		ModelId[EM_Sniper]		= ItemList_Add("SniperStruct.Item.gbx");
+		ModelId[EM_Medic]		= ItemList_Add("MedicStruct.Item.gbx" );
+		ModelId[EM_Ninja]		= ItemList_Add("NinjaStruct.Item.gbx");
+		ModelId[EM_Mage]		= ItemList_Add("MageStruct.Item.gbx");
+	}
+	ItemList_End();
+	
+	Layers::Create("CGame.EnergyBar", GetEnergyBarLayer());
+	Layers::Create("CGame.PlayerMarker", GetPlayerMarkerLayer());
+	Layers::SetType("CGame.PlayerMarker", CUILayer::EUILayerType::Markers);
+	
+	UIManager.UIAll.OverlayHideConsumables = True;
+	UIManager.UIAll.NoticesFilter_LevelToShowAsBigMessage = CUIConfig::ENoticeLevel::MatchInfo;
+	UIManager.UIAll.NoticesFilter_HideMapWarning = True;
+}
+
+Void OnActionCustomEvent(CSmModeEvent e)
+{
+	declare shooterKit = GetPlayerKit(e.Shooter);
+	declare victimKit = GetPlayerKit(e.Victim);
+	declare victimIsDisguise = False;
+	
+	if (victimKit == "ninja")
+	{
+		declare netwrite Net_DisguiseKit for e.Victim = "";
+		if (Net_DisguiseKit != "")
+			victimIsDisguise = True;
+	}
+
+	if (e.Param1 == "damage" && e.Victim != Null && e.Victim != e.Shooter
+		&& e.Victim.CurrentClan != e.Shooter.CurrentClan) 
+	{
+		declare netwrite Net_CurseShooterLogin for e.Victim = "";
+		declare isHeadshot = False;		
+		declare COMBO = 0;
+		
+
+		declare LastTimeHit for e.Victim = Now;
+		LastTimeHit = Now;
+		
+		if (shooterKit == "sniper")
+		{
+			if (e.Param2.count == 5)
+			{
+				declare x = TextLib::ToReal(e.Param2[1]);
+				declare y = TextLib::ToReal(e.Param2[2]);
+				declare z = TextLib::ToReal(e.Param2[3]);
+				declare vec = <x, y, z>;
+				
+				isHeadshot = IsHeadShot(vec, e.Victim.Position);
+				
+				COMBO = TextLib::ToInteger(e.Param2[4]);
+			}
+		}
+		if (victimKit == "ninja")
+		{
+			declare netwrite Net_IsDisguise for e.Victim = False;
+			Net_IsDisguise = False;
+		}
+		
+		declare EventDamage = TextLib::ToInteger(e.Param2[0]);
+		declare Points = EventDamage / 100;
+		
+		/*if (get_IsFinalGoal && e.Shooter.CurrentClan == 3 - AttackingClan)
+		{
+			EventDamage *= 2;	
+			if (UIManager.UIAll.CountdownEndTime > Now)
+			{
+				EventDamage *= 4;
+			}
+		}*/
+		if (victimKit == "sniper")
+		{
+			declare EagleEyeTime for e.Victim = 0;
+			if (EagleEyeTime > Now)
+			{
+				if (EventDamage > 1)
+					EventDamage /= 3;
+			}
+		}
+		/*if (e.Victim.CurrentClan == 3 - AttackingClan
+		&& get_IsFinalGoal && UIManager.UIAll.CountdownEndTime > Now)
+		{
+			if (EventDamage > 1)
+				EventDamage /= 3;
+		}*/
+		
+		if (isHeadshot)
+		{
+			EventDamage *= 3;
+			Points *= 3;
+		}
+		if (shooterKit == "ninja")
+		{
+			e.Shooter.Armor += EventDamage / 4;
+			
+			if (victimKit == "turret")
+			{
+				EventDamage *= 2;
+				Points *= 2;
+			}
+		}
+		if (shooterKit == "sniper")
+		{
+			EventDamage += COMBO * 200;
+			Points += COMBO * 2;
+		}
+		
+		if (Net_CurseShooterLogin != "")
+		{
+			EventDamage += 100;
+			EventDamage *= 2;
+			Points *= 2;
+		}
+		if (victimKit == "turret" 
+		&& e.Victim.Driver != Null
+		&& e.Victim.Driver.Owner != Null)
+		{
+			if (e.Victim.Driver.Owner.SpawnStatus == CSmPlayer::ESpawnStatus::NotSpawned)
+			{
+				EventDamage *= 2;
+				Points *= 2;
+			}
+			declare Turret_Type for e.Victim = 1;	
+			if (Turret_Type == C_TurretType_Flak && !e.Shooter.IsInAir)
+			{
+				EventDamage *= 2;
+				Points *= 2;
+			}	
+		}
+		
+		declare rewardPlayer <=> e.Shooter;
+		if (e.Shooter.Driver != Null && e.Shooter.Driver.Owner != Null)
+		{
+			declare Turret = Turret_Get(e.Shooter.Id, e.Shooter.Driver.Owner.User.Login);
+			if (Turret != Null)
+			{
+				declare Turret_XP for Turret = 0;
+				declare Turret_Type for Turret = 1;
+				
+				if (Turret_Type == C_TurretType_Flak && e.Victim.IsInAir)
+				{
+					EventDamage *= 4;
+					Points *= 4;
+				}
+				
+				Turret_XP += Points * 25;
+				
+				Turret.Armor += Points * 25;
+			}
+			
+			foreach (player in Players)
+			{
+				if (player == e.Shooter.Driver.Owner)
+					rewardPlayer <=> player;
+			}
+		}
+		
+		Score::AddPoints(rewardPlayer, Points);
+		
+		e.ShooterPoints = Points;
+		RemovePlayerArmor(e.Victim, EventDamage, rewardPlayer, Points);
+	}
+	if (e.Param1 == "heal_self")
+	{
+		declare playerKit for e.Shooter = "";
+		if (playerKit != "medic")
+			e.Shooter.Armor += 30 * 100;
+		else
+			e.Shooter.Armor += 15 * 100;
+	}
+	if (e.Param1 == "heal_ball")
+	{
+		declare playerKit for e.Victim = "";
+		if ((e.Shooter.CurrentClan == e.Victim.CurrentClan && !victimIsDisguise)
+		|| (e.Shooter.CurrentClan != e.Victim.CurrentClan && victimIsDisguise))
+		{
+			declare oldVictimArmor = e.Victim.Armor;
+		
+			if (playerKit != "medic")
+				e.Victim.Armor += 90 * 100;
+			else
+				e.Victim.Armor += 50 * 100;
+				
+			declare dif = MathLib::NearestInteger((e.Victim.Armor - oldVictimArmor) * 0.01);
+				
+			if (e.Shooter != e.Victim)
+				Score::AddPoints(e.Shooter, dif);
+				
+			if (dif > 0)
+				UIManager.UIAll.SendNotice("""$<{{{e.Shooter.User.Name}}}$z$s$> $4a4 ({{{dif}}}) $<{{{e.Victim.User.Name}}}$z$s$>""", CUIConfig::ENoticeLevel::Default, e.Shooter.User, CUIConfig::EAvatarVariant::Default, CUIConfig::EUISound::Silence, 0);
+		}
+	}
+	if (e.Param1 == "heal_medigun")
+	{
+		declare playerKit for e.Victim = "";
+		if ((e.Shooter.CurrentClan == e.Victim.CurrentClan && !victimIsDisguise)
+		|| (e.Shooter.CurrentClan != e.Victim.CurrentClan && victimIsDisguise))
+		{
+			declare oldVictimArmor = e.Victim.Armor;
+		
+			if (e.Shooter != e.Victim)
+				e.Victim.Armor += 3 * 100;
+			else
+				e.Victim.Armor += 0;
+				
+			declare dif = MathLib::NearestInteger((e.Victim.Armor - oldVictimArmor) * 0.01);
+				
+			if (e.Shooter != e.Victim)
+				Score::AddPoints(e.Shooter, dif);
+					
+			if (dif > 0)
+				UIManager.UIAll.SendNotice("""$<{{{e.Shooter.User.Name}}}$z$s$> $4a4 ({{{dif}}}) $<{{{e.Victim.User.Name}}}$z$s$>""", CUIConfig::ENoticeLevel::Default, e.Shooter.User, CUIConfig::EAvatarVariant::Default, CUIConfig::EUISound::Silence, 0);
+		}
+	}
+	if (e.Param1 == "disguise")
+	{
+		declare netwrite Net_IsDisguise for e.Shooter = False;
+		Net_IsDisguise = !Net_IsDisguise;
+		
+		declare netwrite Net_DisguiseKit for e.Shooter = "soldier";
+		Net_DisguiseKit = "soldier";
+		
+		if (!Net_IsDisguise)
+			Net_DisguiseKit = "";
+		
+		if (e.Shooter.CurrentClan != 0)
+		{
+			declare randNumber = MathLib::Rand(0, ClansNbPlayers[3 - e.Shooter.CurrentClan] - 1);
+			declare i = 0;
+			foreach (player in Players)
+			{
+				if (player.CurrentClan == 3 - e.Shooter.CurrentClan)
+				{
+					if (i == randNumber)
+					{
+						Net_DisguiseKit = GetPlayerKit(player);
+						break;
+					}
+				
+					i += 1;
+				}
+			}
+		}
+	}
+	if (e.Param1 == "eagle_eye")
+	{
+		declare EagleEyeTime for e.Shooter = Now;
+		EagleEyeTime = Now + 10000;
+	}
+	if (e.Param1 == "mg_explo")
+	{
+		if (e.Shooter != Null)
+		e.Shooter.Armor -= 60 * 100;
+	}
+	if (e.Param1 == "switch_action")
+	{	
+		declare IsUsingMinigun for e.Shooter = False;
+		IsUsingMinigun = !IsUsingMinigun;
+		
+		if (IsUsingMinigun)
+		{
+			ActionBind(e.Shooter, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
+			ActionBind(e.Shooter, CSmMode::EActionSlot::Slot_E, CSmMode::EActionInput::Weapon);
+		}
+		else
+		{
+			ActionBind(e.Shooter, CSmMode::EActionSlot::Slot_E, CSmMode::EActionInput::None);
+			ActionBind(e.Shooter, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
+		}
+	}
+	if (e.Param1 == "create_turret")
+	{
+		declare netwrite Net_PlacingTurret for e.Shooter = False;
+		Net_PlacingTurret = !Net_PlacingTurret;
+	
+		declare CanSpawn = True;
+		/*declare player = e.Shooter;
+		declare aimPos = player.AimDirection;
+		aimPos.Y = 0.;
+		declare PlacedTurret <=> TurretsManager.Turret_Create(TurretId, player.Position, aimPos, player.CurrentClan, player);*/
+		/*foreach (Landmark in MapLandmarks_Gate)
+		{
+			if (MathLib::Distance(Landmark.Position, e.Shooter.Position) < 7.5)
+				CanSpawn = False;
+		}
+		
+		if (CanSpawn)
+			SpawnTurret(e.Shooter, 1);*/
+	}
+}
+
+Void OnActionEvent(CSmModeEvent e)
+{
+	declare TurretType = 0;
+	declare netwrite Net_PlacingTurret for e.Player = False;
+	if (e.ActionInput == CSmModeEvent::EActionInput::Activable2)
+	{
+		if (Net_PlacingTurret)
+			TurretType = 1;
+	}
+	if (e.ActionInput == CSmModeEvent::EActionInput::Activable3)
+	{	
+		if (Net_PlacingTurret)
+			TurretType = 2;
+	}
+	if (e.ActionInput == CSmModeEvent::EActionInput::Activable4)
+	{	
+		declare Turret = Turret_Get(NullId, e.Player.User.Login);
+		if (Turret != Null)
+		{
+			declare nearPlayer = CSmPlayer;
+			declare LastDist = 10000.;
+			foreach (player in AllPlayers)
+			{
+				if (Turret_IsValidTarget(Turret.Id, e.Player.User.Login, player))
+				{
+					if (MathLib::Distance(player.Position, Turret.Position) < LastDist)
+					{
+						LastDist = MathLib::Distance(player.Position, Turret.Position);
+						nearPlayer <=> player;
+					}
+				}
+			}
+			
+			Turret.Driver.ForcedTarget = nearPlayer;
+			declare Turret_TargetTime for Turret = Now;
+			Turret_TargetTime = Now;
+			
+			declare UI = UIManager.GetUI(e.Player);
+			if (UI != Null)
+			{
+				UI.SendNotice("Turret target reset!", CUIConfig::ENoticeLevel::PlayerInfo, e.Player.User, CUIConfig::EAvatarVariant::Default, CUIConfig::EUISound::ScoreProgress , 0);
+			}
+		}
+	}
+	
+	declare CanSpawn = e.Player.IsTouchingGround && TurretType != 0;
+	foreach (Landmark in MapLandmarks_Gate)
+	{
+		if (MathLib::Distance(Landmark.Position, e.Player.Position) < 7.5)
+			CanSpawn = False;
+	}
+	
+	if (CanSpawn)
+	{
+		Net_PlacingTurret = False;
+		SpawnTurret(e.Player, TurretType);
+	}
+}

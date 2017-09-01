@@ -1,0 +1,927 @@
+// -------------------------------------- //
+//  LIBRARY TRANSLATIONS by domino54      //
+//  script version: 2017-06-28            //
+// -------------------------------------- //
+
+/**
+ *	This library allows to display translated messages,
+ *	if they're featured in dedicated PhraseBank library.
+ *	Instead TextLib compose function, use arrays: Text[].
+ *	Chat messages MUST be prefixed.
+ */
+
+#Const Version		"2017-06-28"
+#Const ScriptName	"Libs/domino54/Translations.Script.txt"
+
+#Include "TextLib" as TL
+#Include "Libs/Nadeo/Message.Script.txt" as Message
+
+// ---------------------------------- //
+// Constants
+// ---------------------------------- //
+#Const C_LibTranslations_DefaultChatPrefix	"$FD0» $FFF"	///< Default chat message prefix
+#Const G_LibTranslations_RequestTimeOut		5000	///< Maximum time the server waits for translations to download
+
+/// Characters to escape when including translations inside a manialink script
+#Const C_LibTranslations_CharsToEscape [
+	"\"" => "\\\"",
+	"\\" => "\\\\",
+	"\n" => "\\n",
+	"\t" => "\\t"
+]
+
+/// List of available ManiaPlanet languages
+#Const G_LibTranslations_LanguagesList ["cz", "da", "de", "en_GB", "es", "fr", "hu", "it", "jp", "kr", "nb", "nl", "pl", "pt", "pt_BR", "ro", "ru", "sk", "tr", "zh"]
+
+// ---------------------------------- //
+// Global variables
+// ---------------------------------- //
+declare Integer G_LibTranslations_LatestIndex;	///< Last added phrase index
+declare Text G_LibTranslations_ChatPrefix;		///< Custom chat message prefix
+
+/// Translations requests
+declare Text[] G_LibTranslations_RequestsPriorityOrder;		///< Requests ordered by their priority
+declare Ident[Text] G_LibTranslations_OngoingRequests;		///< Ongoing translations requests ids
+declare Integer[Text] G_LibTranslations_RequestStartTime;	///< Start times of the requests
+
+/**
+ *	Available translations.
+ *	Every language stored as separate array to prevent lags caused
+ *	by using single, three-dimensional array.
+ */
+declare Text[Integer] G_LibTranslations_CZ; ///< Czech
+declare Text[Integer] G_LibTranslations_DA; ///< Danish
+declare Text[Integer] G_LibTranslations_DE; ///< German
+declare Text[Integer] G_LibTranslations_EN; ///< English (primary, index)
+declare Text[Integer] G_LibTranslations_ENGB; ///< British English
+declare Text[Integer] G_LibTranslations_ES; ///< Spanish
+declare Text[Integer] G_LibTranslations_FR; ///< French
+declare Text[Integer] G_LibTranslations_HU; ///< Hungarian
+declare Text[Integer] G_LibTranslations_IT; ///< Italian
+declare Text[Integer] G_LibTranslations_JP; ///< Japanese
+declare Text[Integer] G_LibTranslations_KR; ///< Korean
+declare Text[Integer] G_LibTranslations_NB; ///< Norwegian
+declare Text[Integer] G_LibTranslations_NL; ///< Dutch
+declare Text[Integer] G_LibTranslations_PL; ///< Polish
+declare Text[Integer] G_LibTranslations_PT; ///< Portuguese
+declare Text[Integer] G_LibTranslations_PTBR; ///< Brazilian Portuguese
+declare Text[Integer] G_LibTranslations_RO; ///< Romanian
+declare Text[Integer] G_LibTranslations_RU; ///< Russian
+declare Text[Integer] G_LibTranslations_SK; ///< Slovak
+declare Text[Integer] G_LibTranslations_TR; ///< Turkish
+declare Text[Integer] G_LibTranslations_ZH; ///< Chinese
+
+// ---------------------------------- //
+// Functions
+// ---------------------------------- //
+
+// ---------------------------------- //
+// Private
+// ---------------------------------- //
+
+// ---------------------------------- //
+/** Escape characters forbidden in ManiaScript
+ *
+ *	@param	_String		The string to escape forbidden characters
+ *
+ *	@return		The escaped string
+ */
+Text Private_MSEscape(Text _String) {
+	if (_String == "") return "";
+	
+	// ---------------------------------- //
+	// No need to escape string if any of the forbidden characters doesn't exist
+	declare Text[] ForbiddenCharacters;
+	foreach (Char => Replacement in C_LibTranslations_CharsToEscape) {
+		if (TL::Find(Char, _String, False, False)) ForbiddenCharacters.add(Char);
+	}
+	if (ForbiddenCharacters.count <= 0) return _String;
+	
+	// ---------------------------------- //
+	// Escape characters
+	declare EscapedString = "";
+	for (I, 0, TL::Length(_String) - 1) {
+		declare Char = TL::SubText(_String, I, 1);
+		if (ForbiddenCharacters.exists(Char)) Char = C_LibTranslations_CharsToEscape[Char];
+		EscapedString ^= Char;
+	}
+	return EscapedString;
+}
+
+// ---------------------------------- //
+/** Load translations from an XML document
+ *
+ *	@param	_Document	The document containing phrases translations
+ */
+Void Private_LoadTranslations(CXmlDocument _Document) {
+	if (_Document == Null || _Document.Root == Null || _Document.Root.Name != "translations") return;
+	
+	foreach (Node in _Document.Root.Children) {
+		// ---------------------------------- //
+		// Load phrases translations
+		if (Node.Name == "phrases") foreach (Phrase in Node.Children) {
+			if (Phrase.Name != "phrase") continue;
+			
+			declare English = "";
+			declare Translations = Text[Text];
+			
+			// ---------------------------------- //
+			// Find English base and translations
+			foreach (Language in Phrase.Children) {
+				declare LanguageName = TL::ToLowerCase(Language.Name);
+				if (LanguageName == "en") English = Language.TextContents;
+				else Translations[LanguageName] = Language.TextContents;
+			}
+			
+			// Skip invalid phrase
+			if (English == "" || Translations.count <= 0) continue;
+			
+			// ---------------------------------- //
+			// Get the index of the phrase
+			declare Index = G_LibTranslations_LatestIndex;
+			if (G_LibTranslations_EN.exists(English)) Index = G_LibTranslations_EN.keyof(English);
+			else G_LibTranslations_LatestIndex += 1;
+			
+			// Save new phrase index
+			G_LibTranslations_EN[Index] = English;
+			
+			// ---------------------------------- //
+			// Save new phrasse translations
+			foreach (Language => Translation in Translations) if (Translation != "") switch (Language) {
+				case "cz" : G_LibTranslations_CZ[Index] = Translation;
+				case "da" : G_LibTranslations_DA[Index] = Translation;
+				case "de" : G_LibTranslations_DE[Index] = Translation;
+				case "en_GB" : G_LibTranslations_ENGB[Index] = Translation;
+				case "es" : G_LibTranslations_ES[Index] = Translation;
+				case "fr" : G_LibTranslations_FR[Index] = Translation;
+				case "hu" : G_LibTranslations_HU[Index] = Translation;
+				case "it" : G_LibTranslations_IT[Index] = Translation;
+				case "jp" : G_LibTranslations_JP[Index] = Translation;
+				case "kr" : G_LibTranslations_KR[Index] = Translation;
+				case "nb" : G_LibTranslations_NB[Index] = Translation;
+				case "nl" : G_LibTranslations_NL[Index] = Translation;
+				case "pl" : G_LibTranslations_PL[Index] = Translation;
+				case "pt" : G_LibTranslations_PT[Index] = Translation;
+				case "pt_BR" : G_LibTranslations_PTBR[Index] = Translation;
+				case "ro" : G_LibTranslations_RO[Index] = Translation;
+				case "ru" : G_LibTranslations_RU[Index] = Translation;
+				case "sk" : G_LibTranslations_SK[Index] = Translation;
+				case "tr" : G_LibTranslations_TR[Index] = Translation;
+				case "zh" : G_LibTranslations_ZH[Index] = Translation;
+			}
+		}
+	}
+}
+
+// ---------------------------------- //
+// Public
+// ---------------------------------- //
+
+// ---------------------------------- //
+/** Return the version number of the script
+ *
+ *	@return		The version number of the script
+ */
+Text GetScriptVersion() { return Version; }
+
+// ---------------------------------- //
+/** Return the name of the script
+ *
+ *	@return		The name of the script
+ */
+Text GetScriptName() { return ScriptName; }
+
+// ---------------------------------- //
+/** Return translation depending on selected language
+ *
+ *	@param	_Language	The language the phrase will be translated to
+ *	@param	_Phrase		The phrase to translate
+ *
+ *	@return		Translated phrase
+ */
+Text Translate(Text _Language, Text _Phrase) {
+	if (_Phrase == "" || _Language == "" || _Language == "en") return _Phrase;
+	
+	// Get phrase index
+	if (!G_LibTranslations_EN.exists(_Phrase)) return _Phrase;
+	declare PhraseIndex = G_LibTranslations_EN.keyof(_Phrase);
+	
+	// ---------------------------------- //
+	// Get the target language translations
+	declare Text[Integer] LanguageTranslations;
+	switch (_Language) {
+		case "cz" : LanguageTranslations = G_LibTranslations_CZ;
+		case "da" : LanguageTranslations = G_LibTranslations_DA;
+		case "de" : LanguageTranslations = G_LibTranslations_DE;
+		case "en_GB" : LanguageTranslations = G_LibTranslations_ENGB;
+		case "es" : LanguageTranslations = G_LibTranslations_ES;
+		case "fr" : LanguageTranslations = G_LibTranslations_FR;
+		case "hu" : LanguageTranslations = G_LibTranslations_HU;
+		case "it" : LanguageTranslations = G_LibTranslations_IT;
+		case "jp" : LanguageTranslations = G_LibTranslations_JP;
+		case "kr" : LanguageTranslations = G_LibTranslations_KR;
+		case "nb" : LanguageTranslations = G_LibTranslations_NB;
+		case "nl" : LanguageTranslations = G_LibTranslations_NL;
+		case "pl" : LanguageTranslations = G_LibTranslations_PL;
+		case "pt" : LanguageTranslations = G_LibTranslations_PT;
+		case "pt_BR" : LanguageTranslations = G_LibTranslations_PTBR;
+		case "ro" : LanguageTranslations = G_LibTranslations_RO;
+		case "ru" : LanguageTranslations = G_LibTranslations_RU;
+		case "sk" : LanguageTranslations = G_LibTranslations_SK;
+		case "tr" : LanguageTranslations = G_LibTranslations_TR;
+		case "zh" : LanguageTranslations = G_LibTranslations_ZH;
+	}
+	
+	// Return the translation or original phrase if not found
+	if (LanguageTranslations.existskey(PhraseIndex)) return LanguageTranslations[PhraseIndex];
+	return _Phrase;
+}
+
+// ---------------------------------- //
+/** Return translation using custom Compose function
+ *
+ *	@param	_Language		The language phrases will be translated to
+ *	@param	_Arguments		The arguments for the compose function
+ *
+ *	@return		Translated phrase
+ */
+Text Translate(Text _Language, Text[] _Arguments) {
+	if (_Arguments.count <= 0) return "";
+	if (_Arguments[0] == "") return "";
+	
+	declare Base = Translate(_Language, _Arguments[0]);
+	foreach (I => Argument in _Arguments) {
+		if (I == 0) continue;
+		Base = TL::Replace(Base, "%"^I, Translate(_Language, Argument));
+	}
+	return Base;
+}
+
+// ---------------------------------- //
+/** Return translation using Compose function
+ *
+ *	@deprecated		Use Translate() function instead
+ *
+ *	@param	_Language		The language phrases will be translated to
+ *	@param	_Prefix			Text to attach before basic argument
+ *	@param	_Arguments		The arguments for the compose function
+ *	@param	_Suffix			Text to attach after basic argument
+ *
+ *	@return		Translated phrase
+ */
+Text Compose(Text _Language, Text _Prefix, Text[] _Arguments, Text _Suffix) {
+	if (_Arguments.count <= 0) return _Prefix^_Suffix;
+	if (_Arguments.count == 1) return _Prefix^Translate(_Language, _Arguments[0])^_Suffix;
+	return _Prefix^Translate(_Language, _Arguments)^_Suffix;
+}
+
+// ---------------------------------- //
+/** Set interface message for specified player
+ *
+ *	@param	_Player		Player to set a message
+ *	@param	_Message	The message to set
+ *	@param	_Level		Type of the message
+ */
+Void Private_SetMessage(CPlayer _Player, Text _Message, Text _Type) {
+	if (_Type == "" || _Player == Null || _Player.User == Null || _Player.User.IsFakeUser) return;
+	declare UI <=> UIManager.GetUI(_Player);
+	if (UI == Null) return;
+	
+	declare TranslatedMessage = Translate(_Player.User.Language, _Message);
+	
+	switch (_Type) {
+		case "big" : UI.BigMessage = TranslatedMessage;
+		case "status" : UI.StatusMessage = TranslatedMessage;
+		case "gauge" : UI.GaugeMessage = TranslatedMessage;
+	}
+}
+
+// ---------------------------------- //
+/** Set interface message for specified player
+ *
+ *	@param	_Player		Player to set a message
+ *	@param	_Arguments	The message and arguments to compose
+ *	@param	_Level		Type of the message
+ */
+Void Private_SetComposedMessage(CPlayer _Player, Text[] _Arguments, Text _Type) {
+	if (_Type == "" || _Arguments.count <= 0 || _Player == Null || _Player.User == Null || _Player.User.IsFakeUser) return;
+	declare UI <=> UIManager.GetUI(_Player);
+	if (UI == Null) return;
+	
+	declare TranslatedMessage = Translate(_Player.User.Language, _Arguments);
+	
+	switch (_Type) {
+		case "big" : UI.BigMessage = TranslatedMessage;
+		case "status" : UI.StatusMessage = TranslatedMessage;
+		case "gauge" : UI.GaugeMessage = TranslatedMessage;
+	}
+}
+
+// ---------------------------------- //
+/** Set custom chat prefix
+ *
+ *	@param	_Prefix		Text to attach before translations
+ */
+Void SetChatPrefix(Text _Prefix) { G_LibTranslations_ChatPrefix = _Prefix; }
+
+// ---------------------------------- //
+/** Send chat message to specified player
+ *
+ *	@param	_Player			Player to receive a message
+ *	@param	_Message		Message to send
+ */
+Void SendChat(CPlayer _Player, Text _Message) {
+	if (_Message == "" || _Player == Null || _Player.User == Null || _Player.User.IsFakeUser) return;
+	
+	// Load default chat prefix
+	if (G_LibTranslations_ChatPrefix == "") G_LibTranslations_ChatPrefix = C_LibTranslations_DefaultChatPrefix;
+	
+	declare UI <=> UIManager.GetUI(_Player);
+	if (UI != Null) UI.SendChat(G_LibTranslations_ChatPrefix^Translate(_Player.User.Language, _Message));
+}
+
+// ---------------------------------- //
+/** Send chat message to all players
+ *
+ *	@param	_Message		Message be send
+ */
+Void SendChat(Text _Message) {
+	foreach (Player in AllPlayers) SendChat(Player, _Message);
+}
+
+// ---------------------------------- //
+/** Send composed chat message to specified player
+ *
+ *	@param	_Player			Player to receive a message
+ *	@param	_Arguments		Arguments of the message to send
+ */
+Void SendChat(CPlayer _Player, Text[] _Arguments) {
+	if (_Arguments.count <= 0 || _Player == Null || _Player.User == Null || _Player.User.IsFakeUser) return;
+	
+	// Load default chat prefix
+	if (G_LibTranslations_ChatPrefix == "") G_LibTranslations_ChatPrefix = C_LibTranslations_DefaultChatPrefix;
+	
+	declare UI <=> UIManager.GetUI(_Player);
+	if (UI != Null) UI.SendChat(G_LibTranslations_ChatPrefix^Translate(_Player.User.Language, _Arguments));
+}
+
+// ---------------------------------- //
+/** Send composed chat message to all players
+ *
+ *	@param	_Arguments		Arguments of the message to send
+ */
+Void SendChat(Text[] _Arguments) {
+	foreach (Player in AllPlayers) SendChat(Player, _Arguments);
+}
+
+// ---------------------------------- //
+/** Set big message for a player
+ *
+ *	@param	_Player		Player to set a message
+ *	@param	_Message	The message to set
+ */
+Void SetBigMessage(CPlayer Player, Text _Message) {
+	Private_SetMessage(Player, _Message, "big");
+}
+
+// ---------------------------------- //
+/** Set big message for a player
+ *
+ *	@param	_Player		Player to set a message
+ *	@param	_Arguments	The message and arguments to compose
+ */
+Void SetBigMessage(CPlayer Player, Text[] _Arguments) {
+	Private_SetComposedMessage(Player, _Arguments, "big");
+}
+
+// ---------------------------------- //
+/** Set big message for all players
+ *
+ *	@param	_Player		Player to set a message
+ *	@param	_Message	The message to set
+ */
+Void SetBigMessage(Text _Message) {
+	foreach (Player in AllPlayers) Private_SetMessage(Player, _Message, "big");
+}
+
+// ---------------------------------- //
+/** Set big message for all players
+ *
+ *	@param	_Player		Player to set a message
+ *	@param	_Arguments	The message and arguments to compose
+ */
+Void SetBigMessage(Text[] _Arguments) {
+	foreach (Player in AllPlayers) Private_SetComposedMessage(Player, _Arguments, "big");
+}
+
+// ---------------------------------- //
+/** Set status message for a player
+ *
+ *	@param	_Player		Player to set a message
+ *	@param	_Message	The message to set
+ */
+Void SetStatusMessage(CPlayer Player, Text _Message) {
+	Private_SetMessage(Player, _Message, "status");
+}
+
+// ---------------------------------- //
+/** Set status message for a player
+ *
+ *	@param	_Player		Player to set a message
+ *	@param	_Arguments	The message and arguments to compose
+ */
+Void SetStatusMessage(CPlayer Player, Text[] _Arguments) {
+	Private_SetComposedMessage(Player, _Arguments, "status");
+}
+
+// ---------------------------------- //
+/** Set status message for all players
+ *
+ *	@param	_Player		Player to set a message
+ *	@param	_Message	The message to set
+ */
+Void SetStatusMessage(Text _Message) {
+	foreach (Player in AllPlayers) Private_SetMessage(Player, _Message, "status");
+}
+
+// ---------------------------------- //
+/** Set status message for all players
+ *
+ *	@param	_Player		Player to set a message
+ *	@param	_Arguments	The message and arguments to compose
+ */
+Void SetStatusMessage(Text[] _Arguments) {
+	foreach (Player in AllPlayers) Private_SetComposedMessage(Player, _Arguments, "status");
+}
+
+// ---------------------------------- //
+/** Set gauge message for a player
+ *
+ *	@param	_Player		Player to set a message
+ *	@param	_Message	The message to set
+ */
+Void SetGaugeMessage(CPlayer Player, Text _Message) {
+	Private_SetMessage(Player, _Message, "gauge");
+}
+
+// ---------------------------------- //
+/** Set gauge message for a player
+ *
+ *	@param	_Player		Player to set a message
+ *	@param	_Arguments	The message and arguments to compose
+ */
+Void SetGaugeMessage(CPlayer Player, Text[] _Arguments) {
+	Private_SetComposedMessage(Player, _Arguments, "gauge");
+}
+
+// ---------------------------------- //
+/** Set gauge message for all players
+ *
+ *	@param	_Player		Player to set a message
+ *	@param	_Message	The message to set
+ */
+Void SetGaugeMessage(Text _Message) {
+	foreach (Player in AllPlayers) Private_SetMessage(Player, _Message, "gauge");
+}
+
+// ---------------------------------- //
+/** Set gauge message for all players
+ *
+ *	@param	_Player		Player to set a message
+ *	@param	_Arguments	The message and arguments to compose
+ */
+Void SetGaugeMessage(Text[] _Arguments) {
+	foreach (Player in AllPlayers) Private_SetComposedMessage(Player, _Arguments, "gauge");
+}
+
+// ---------------------------------- //
+/// Reset UI messages.
+Void ResetMessages() {
+	SetBigMessage("");
+	SetStatusMessage("");
+	SetGaugeMessage("");
+}
+
+// ---------------------------------- //
+/** Send notice to specified player (SM)
+ *
+ *	@param	_Player				Player to receive a notice
+ *	@param	_Notice				Notice to send
+ *	@param	_Level				Level of the notice
+ *	@param	_Avatar				User to use avatar as icon
+ *	@param	_AvatarVariant		Variant of the user's avatar
+ *	@param	_Sound				Notice sound
+ *	@param	_SoundVariant		Variant of the notice sound
+ */
+Void SendNotice(CPlayer _Player, Text _Notice, CUIConfig::ENoticeLevel _Level, CUser _Avatar, CUIConfig::EAvatarVariant _AvatarVariant, CUIConfig::EUISound _Sound, Integer _SoundVariant) {
+	if (_Notice == "" || _Player == Null || _Player.User == Null || _Player.User.IsFakeUser) return;
+	
+	declare UI <=> UIManager.GetUI(_Player);
+	if (UI != Null) UI.SendNotice(Translate(_Player.User.Language, _Notice), _Level, _Avatar, _AvatarVariant, _Sound, _SoundVariant);
+}
+
+// ---------------------------------- //
+/** Send notice to all players (SM)
+ *
+ *	@param	_Notice				Notice to send
+ *	@param	_Level				Level of the notice
+ *	@param	_Avatar				User to use avatar as icon
+ *	@param	_AvatarVariant		Variant of the user's avatar
+ *	@param	_Sound				Notice sound
+ *	@param	_SoundVariant		Variant of the notice sound
+ */
+Void SendNotice(Text _Notice, CUIConfig::ENoticeLevel _Level, CUser _Avatar, CUIConfig::EAvatarVariant _AvatarVariant, CUIConfig::EUISound _Sound, Integer _SoundVariant) {
+	foreach (Player in AllPlayers) SendNotice(Player, _Notice, _Level, _Avatar, _AvatarVariant, _Sound, _SoundVariant);
+}
+
+// ---------------------------------- //
+/** Send composed notice to specified player (SM)
+ *
+ *	@param	_Player				Player to receive a notice
+ *	@param	_Arguments			Arguments of the notice to send
+ *	@param	_Level				Level of the notice
+ *	@param	_Avatar				User to use avatar as icon
+ *	@param	_AvatarVariant		Variant of the user's avatar
+ *	@param	_Sound				Notice sound
+ *	@param	_SoundVariant		Variant of the notice sound
+ */
+Void SendNotice(CPlayer _Player, Text[] _Arguments, CUIConfig::ENoticeLevel _Level, CUser _Avatar, CUIConfig::EAvatarVariant _AvatarVariant, CUIConfig::EUISound _Sound, Integer _SoundVariant) {
+	if (_Arguments.count <= 0 || _Player == Null || _Player.User == Null || _Player.User.IsFakeUser) return;
+	
+	declare UI <=> UIManager.GetUI(_Player);
+	if (UI != Null) UI.SendNotice(Translate(_Player.User.Language, _Arguments), _Level, _Avatar, _AvatarVariant, _Sound, _SoundVariant);
+}
+
+// ---------------------------------- //
+/** Send composed notice to all players (SM)
+ *
+ *	@param	_Arguments			Arguments of the notice to send
+ *	@param	_Level				Level of the notice
+ *	@param	_Avatar				User to use avatar as icon
+ *	@param	_AvatarVariant		Variant of the user's avatar
+ *	@param	_Sound				Notice sound
+ *	@param	_SoundVariant		Variant of the notice sound
+ */
+Void SendNotice(Text[] _Arguments, CUIConfig::ENoticeLevel _Level, CUser _Avatar, CUIConfig::EAvatarVariant _AvatarVariant, CUIConfig::EUISound _Sound, Integer _SoundVariant) {
+	foreach (Player in AllPlayers) SendNotice(Player, _Arguments, _Level, _Avatar, _AvatarVariant, _Sound, _SoundVariant);
+}
+
+// ---------------------------------- //
+/// Unload all downloaded translations
+Void Unload() {
+	ResetMessages();
+
+	G_LibTranslations_LatestIndex = 0;
+	G_LibTranslations_CZ.clear();
+	G_LibTranslations_DA.clear();
+	G_LibTranslations_DE.clear();
+	G_LibTranslations_EN.clear();
+	G_LibTranslations_ENGB.clear();
+	G_LibTranslations_ES.clear();
+	G_LibTranslations_FR.clear();
+	G_LibTranslations_HU.clear();
+	G_LibTranslations_IT.clear();
+	G_LibTranslations_JP.clear();
+	G_LibTranslations_KR.clear();
+	G_LibTranslations_NB.clear();
+	G_LibTranslations_NL.clear();
+	G_LibTranslations_PL.clear();
+	G_LibTranslations_PT.clear();
+	G_LibTranslations_PTBR.clear();
+	G_LibTranslations_RO.clear();
+	G_LibTranslations_RU.clear();
+	G_LibTranslations_SK.clear();
+	G_LibTranslations_TR.clear();
+	G_LibTranslations_ZH.clear();
+	
+	// ---------------------------------- //
+	// Destroy ongoing requests
+	foreach (URL => RequestId in G_LibTranslations_OngoingRequests) {
+		if (!Http.Requests.existskey(RequestId)) continue;
+		Http.Destroy(Http.Requests[RequestId]);
+	}
+	
+	G_LibTranslations_RequestsPriorityOrder.clear();
+	G_LibTranslations_OngoingRequests.clear();
+	G_LibTranslations_RequestStartTime.clear();
+}
+
+// ---------------------------------- //
+/** Start loading translations from given URLs
+ *
+ *	@param	_FilesURLs	Addresses of the files containing translations
+ */
+Void Load(Text[] _FilesURLs) {
+	if (_FilesURLs.count <= 0) return;
+	Unload();
+	
+	foreach (URL in _FilesURLs) {
+		if (!Http.IsValidUrl(URL)) continue;
+		declare Request = Http.CreateGet(URL, False);
+		G_LibTranslations_OngoingRequests[URL] = Request.Id;
+		G_LibTranslations_RequestStartTime[URL] = Now;
+		G_LibTranslations_RequestsPriorityOrder.add(URL);
+	}
+}
+
+// ---------------------------------- //
+/** Manage ongoing translations requests
+ *
+ *	@return		True, if the translations have been loaded
+ */
+Boolean LoadingLoop() {
+	if (G_LibTranslations_OngoingRequests.count <= 0) return True;
+	declare FinishedRequests = 0;
+	
+	// ---------------------------------- //
+	// Manage requests
+	foreach (URL => RequestId in G_LibTranslations_OngoingRequests) {
+		if (!Http.Requests.existskey(RequestId)) continue;
+		declare Request = Http.Requests[RequestId];
+		
+		// Request has been completed
+		if (Request.IsCompleted) FinishedRequests += 1;
+		
+		// Request has timed out
+		else if (
+			G_LibTranslations_RequestStartTime.existskey(URL) &&
+			Now > G_LibTranslations_RequestStartTime[URL] + G_LibTranslations_RequestTimeOut
+		) 
+			FinishedRequests += 1;
+	}
+	
+	// Wait until all requests are finished
+	if (FinishedRequests < G_LibTranslations_RequestsPriorityOrder.count) return False;
+	
+	// ---------------------------------- //
+	// Load translations
+	foreach (URL => RequestId in G_LibTranslations_OngoingRequests) {
+		if (!Http.Requests.existskey(RequestId)) continue;
+		declare Request = Http.Requests[RequestId];
+		
+		if (Request.IsCompleted) {
+			declare TranslationsDocument = Xml.Create(Request.Result);
+			Private_LoadTranslations(TranslationsDocument);
+			Xml.Destroy(TranslationsDocument);
+		}
+		
+		Http.Destroy(Request);
+	}
+	
+	G_LibTranslations_RequestsPriorityOrder.clear();
+	G_LibTranslations_OngoingRequests.clear();
+	G_LibTranslations_RequestStartTime.clear();
+	
+	return True;
+}
+
+// ---------------------------------- //
+/** Insert library functions inside a manialink
+ *
+ *	@param	_Phrases		List of phrases to include in manialink
+ *
+ *	@return		Text containing generated functions
+ */
+Text InsertToManialink(Text[] _Phrases) {
+	// ---------------------------------- //
+	// Create array of phrases indexes
+	declare IndexList = "Text[Integer]";
+	declare Integer[] FoundIndexes;
+	declare Text[] IndexObjects;
+	
+	foreach (Phrase in _Phrases) {
+		if (!G_LibTranslations_EN.exists(Phrase)) continue;
+		declare Index = G_LibTranslations_EN.keyof(Phrase);
+		IndexObjects.add(Index^" => \""^Private_MSEscape(Phrase)^"\"");
+		FoundIndexes.add(Index);
+	}
+	if (IndexObjects.count > 0) IndexList = "["^TL::Join(", ", IndexObjects)^"]";
+	
+	// ---------------------------------- //
+	// Create array of phrases translations
+	declare LanguagesList = "Text[Integer][Text]";
+	declare Text[] LanguageObjects;
+	
+	if (FoundIndexes.count > 0) foreach (Language in G_LibTranslations_LanguagesList) {
+		// ---------------------------------- //
+		// Get the target language translations
+		declare Text[Integer] LanguageTranslations;
+		switch (Language) {
+			case "cz" : LanguageTranslations = G_LibTranslations_CZ;
+			case "da" : LanguageTranslations = G_LibTranslations_DA;
+			case "de" : LanguageTranslations = G_LibTranslations_DE;
+			case "en_GB" : LanguageTranslations = G_LibTranslations_ENGB;
+			case "es" : LanguageTranslations = G_LibTranslations_ES;
+			case "fr" : LanguageTranslations = G_LibTranslations_FR;
+			case "hu" : LanguageTranslations = G_LibTranslations_HU;
+			case "it" : LanguageTranslations = G_LibTranslations_IT;
+			case "jp" : LanguageTranslations = G_LibTranslations_JP;
+			case "kr" : LanguageTranslations = G_LibTranslations_KR;
+			case "nb" : LanguageTranslations = G_LibTranslations_NB;
+			case "nl" : LanguageTranslations = G_LibTranslations_NL;
+			case "pl" : LanguageTranslations = G_LibTranslations_PL;
+			case "pt" : LanguageTranslations = G_LibTranslations_PT;
+			case "pt_BR" : LanguageTranslations = G_LibTranslations_PTBR;
+			case "ro" : LanguageTranslations = G_LibTranslations_RO;
+			case "ru" : LanguageTranslations = G_LibTranslations_RU;
+			case "sk" : LanguageTranslations = G_LibTranslations_SK;
+			case "tr" : LanguageTranslations = G_LibTranslations_TR;
+			case "zh" : LanguageTranslations = G_LibTranslations_ZH;
+		}
+		declare Text[] PhraseObjects;
+		
+		foreach (Index in FoundIndexes) {
+			if (!LanguageTranslations.existskey(Index)) continue;
+			PhraseObjects.add(Index^" => \""^Private_MSEscape(LanguageTranslations[Index])^"\"");
+		}
+		
+		// Create array of language phrases with the language code as the key
+		if (PhraseObjects.count > 0) LanguageObjects.add("\""^Language^"\" => ["^TL::Join(", ", PhraseObjects)^"]");
+	}
+	
+	// Create array of languages and their available phrases
+	if (LanguageObjects.count > 0) LanguagesList = "["^TL::Join(", ", LanguageObjects)^"]";
+	
+	return """
+// ---------------------------------- //
+// Translations Start
+// ---------------------------------- //
+
+Integer Private_LibTranslations_GetIndex(Text _Phrase) {
+	declare C_LibSB_Index = {{{IndexList}}};
+	if (C_LibSB_Index.exists(_Phrase)) return C_LibSB_Index.keyof(_Phrase);
+	return -1;
+}
+
+Text Private_LibTranslations_GetTranslation(Text _Language, Integer _Index) {
+	declare C_LibSB_Translations = {{{LanguagesList}}};
+	
+	if (C_LibSB_Translations.existskey(_Language) && C_LibSB_Translations[_Language].existskey(_Index))
+		return C_LibSB_Translations[_Language][_Index];
+	
+	return "";
+}
+
+CMlLabel Private_LibTranslations_GetLabel(Text _LabelId) {
+	if (_LabelId == "") return Null;
+	declare LibTranslations_Control <=> Page.GetFirstChild(_LabelId);
+	
+	if (LibTranslations_Control is CMlLabel) return (LibTranslations_Control as CMlLabel);
+	return Null;
+}
+
+Text Translations_Get(Text _Phrase) {
+	if (_Phrase == "" || LocalUser.Language == "en" || LocalUser.Language == "en_GB") return _Phrase;
+	declare AutoTranslatedPhrase = TL::GetTranslatedText(_Phrase);
+	
+	declare PhraseIndex = Private_LibTranslations_GetIndex(_Phrase);
+	if (PhraseIndex <= -1) return AutoTranslatedPhrase;
+	
+	declare TranslatedPhrase = Private_LibTranslations_GetTranslation(LocalUser.Language, PhraseIndex);
+	if (TranslatedPhrase != "") return TranslatedPhrase;
+	return AutoTranslatedPhrase;
+}
+
+Text Translations_GetComposed(Text[] _Arguments) {
+	if (_Arguments.count <= 0) return "";
+	if (_Arguments.count == 1) return Translations_Get(_Arguments[0]);
+	declare Base = TL::GetTranslatedText(Translations_Get(_Arguments[0]));
+	if (Base == "") return "";
+	
+	foreach (I => Argument in _Arguments) {
+		if (I == 0) continue;
+		Base = TL::Replace(Base, "%"^I, Translations_Get(Argument));
+	}
+
+	return Base;
+}
+
+// ---------------------------------- //
+/** Get string translated into local user language
+ *
+ *	@param	_String		The string to translate
+ *
+ *	@return		Translated string, when translation is available
+ */
+Text Translate(Text _String) {
+	return Translations_Get(_String);
+}
+
+// ---------------------------------- //
+/** Get string translated into local user language
+ *
+ *	@param	_Arguments		The arguments of a string to translate
+ *
+ *	@return		Translated string, when translation is available
+ */
+Text Translate(Text[] _Arguments) {
+	return Translations_GetComposed(_Arguments);
+}
+
+// ---------------------------------- //
+/** Put translated string into a label value
+ *
+ *	@param	_LabelId	The ID of the label to translate
+ *	@param	_String		The string to translate
+ */
+Void Translate(Text _LabelId, Text _String) {
+	declare LibTranslations_Label = Private_LibTranslations_GetLabel(_LabelId);
+	if (LibTranslations_Label != Null) LibTranslations_Label.Value = Translate(_String);
+}
+
+// ---------------------------------- //
+/** Put translated string into a label value
+ *
+ *	@param	_LabelId		The ID of the label to translate
+ *	@param	_Arguments		The arguments of a string to translate
+ */
+Void Translate(Text _LabelId, Text[] _Arguments) {
+	declare LibTranslations_Label = Private_LibTranslations_GetLabel(_LabelId);
+	if (LibTranslations_Label != Null) LibTranslations_Label.Value = Translate(_Arguments);
+}
+
+// ---------------------------------- //
+// Translations Stop
+// ---------------------------------- //
+	""";
+}
+
+Text InjectInManialink(Text[] _Phrases) {
+	return InsertToManialink(_Phrases);
+}
+
+// ---------------------------------- //
+// Message library extension
+// ---------------------------------- //
+
+Void SendBigMessage(CPlayer _Player, Text _Message, Integer _Duration, Integer _Priority, CUIConfig::EUISound _Sound, Integer _SoundVariant) {
+	if (_Player == Null || _Player.User == Null) return;
+	Message::SendBigMessage(_Player, Translate(_Player.User.Language, _Message), _Duration, _Priority, _Sound, _SoundVariant);
+}
+
+Void SendBigMessage(Text _Message, Integer _Duration, Integer _Priority, CUIConfig::EUISound _Sound, Integer _SoundVariant) {
+	foreach (Player in AllPlayers) SendBigMessage(Player, _Message, _Duration, _Priority, _Sound, _SoundVariant);
+}
+
+Void SendBigMessage(CPlayer _Player, Text[] _Arguments, Integer _Duration, Integer _Priority, CUIConfig::EUISound _Sound, Integer _SoundVariant) {
+	if (_Player == Null || _Player.User == Null) return;
+	Message::SendBigMessage(_Player, Translate(_Player.User.Language, _Arguments), _Duration, _Priority, _Sound, _SoundVariant);
+}
+
+Void SendBigMessage(Text[] _Arguments, Integer _Duration, Integer _Priority, CUIConfig::EUISound _Sound, Integer _SoundVariant) {
+	foreach (Player in AllPlayers) SendBigMessage(Player, _Arguments, _Duration, _Priority, _Sound, _SoundVariant);
+}
+
+Void SendStatusMessage(CPlayer _Player, Text _Message, Integer _Duration, Integer _Priority, CUIConfig::EUISound _Sound, Integer _SoundVariant) {
+	if (_Player == Null || _Player.User == Null) return;
+	Message::SendStatusMessage(_Player, Translate(_Player.User.Language, _Message), _Duration, _Priority, _Sound, _SoundVariant);
+}
+
+Void SendStatusMessage(Text _Message, Integer _Duration, Integer _Priority, CUIConfig::EUISound _Sound, Integer _SoundVariant) {
+	foreach (Player in AllPlayers) SendStatusMessage(Player, _Message, _Duration, _Priority, _Sound, _SoundVariant);
+}
+
+Void SendStatusMessage(CPlayer _Player, Text[] _Arguments, Integer _Duration, Integer _Priority, CUIConfig::EUISound _Sound, Integer _SoundVariant) {
+	if (_Player == Null || _Player.User == Null) return;
+	Message::SendStatusMessage(_Player, Translate(_Player.User.Language, _Arguments), _Duration, _Priority, _Sound, _SoundVariant);
+}
+
+Void SendStatusMessage(Text[] _Arguments, Integer _Duration, Integer _Priority, CUIConfig::EUISound _Sound, Integer _SoundVariant) {
+	foreach (Player in AllPlayers) SendStatusMessage(Player, _Arguments, _Duration, _Priority, _Sound, _SoundVariant);
+}
+
+Void SendBigMessage(CPlayer _Player, Text _Message, Integer _Duration, Integer _Priority) {
+	if (_Player == Null || _Player.User == Null) return;
+	Message::SendBigMessage(_Player, Translate(_Player.User.Language, _Message), _Duration, _Priority, CUIConfig::EUISound::Silence, 0);
+}
+
+Void SendBigMessage(Text _Message, Integer _Duration, Integer _Priority) {
+	foreach (Player in AllPlayers) SendBigMessage(Player, _Message, _Duration, _Priority, CUIConfig::EUISound::Silence, 0);
+}
+
+Void SendBigMessage(CPlayer _Player, Text[] _Arguments, Integer _Duration, Integer _Priority) {
+	if (_Player == Null || _Player.User == Null) return;
+	Message::SendBigMessage(_Player, Translate(_Player.User.Language, _Arguments), _Duration, _Priority, CUIConfig::EUISound::Silence, 0);
+}
+
+Void SendBigMessage(Text[] _Arguments, Integer _Duration, Integer _Priority) {
+	foreach (Player in AllPlayers) SendBigMessage(Player, _Arguments, _Duration, _Priority, CUIConfig::EUISound::Silence, 0);
+}
+
+Void SendStatusMessage(CPlayer _Player, Text _Message, Integer _Duration, Integer _Priority) {
+	if (_Player == Null || _Player.User == Null) return;
+	Message::SendStatusMessage(_Player, Translate(_Player.User.Language, _Message), _Duration, _Priority, CUIConfig::EUISound::Silence, 0);
+}
+
+Void SendStatusMessage(Text _Message, Integer _Duration, Integer _Priority) {
+	foreach (Player in AllPlayers) SendStatusMessage(Player, _Message, _Duration, _Priority, CUIConfig::EUISound::Silence, 0);
+}
+
+Void SendStatusMessage(CPlayer _Player, Text[] _Arguments, Integer _Duration, Integer _Priority) {
+	if (_Player == Null || _Player.User == Null) return;
+	Message::SendStatusMessage(_Player, Translate(_Player.User.Language, _Arguments), _Duration, _Priority, CUIConfig::EUISound::Silence, 0);
+}
+
+Void SendStatusMessage(Text[] _Arguments, Integer _Duration, Integer _Priority) {
+	foreach (Player in AllPlayers) SendStatusMessage(Player, _Arguments, _Duration, _Priority, CUIConfig::EUISound::Silence, 0);
+}

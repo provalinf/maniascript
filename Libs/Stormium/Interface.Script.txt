@@ -1,0 +1,582 @@
+/**
+ * Message library
+ */
+#Include "Libs/Nadeo/Layers2.Script.txt" as Layers2
+
+#Const Version		"2017-05-22"
+#Const ScriptName	"Libs/Stormium/Interface.Script.txt"
+
+#Const C_MainLayerName "CInterface.Main"
+#Const C_MarkersLayerName "CInterface.Markers"
+
+#Const C_ModeAgE "CMode.AgE"
+#Const C_ModeChampions "CMode.Champions"
+
+#Const CC """ halign="center" valign="center" """
+#Const LC """ halign="left" valign="center" """
+#Const RC """ halign="right" valign="center" """
+#Const Ratio 0.5625 //< 9/16
+
+declare Text G_CurrentMode;
+declare Integer G_GoalCount;
+declare Text[Integer] G_GoalNames;
+declare Vec3[Integer] G_GoalPositions;
+declare Real[Integer] G_GoalValues;
+declare Integer[] G_PolesIndex;
+declare Boolean G_IsActive;
+declare Boolean G_ITCustomMarkersVisible;
+declare Vec3[Integer] G_GoalColorsDef;
+declare Vec3[Integer] G_GoalColorsAtk;
+
+declare Boolean G_ITCustomCoutdownVisible;
+declare Boolean G_ITCustomScoresVisible;
+
+Text GetMainLayer(Text CurrentMode)
+{
+	return """
+	<manialink version="3">
+		<frame pos="0 80" z-index="10000" id="Frame_Countdown">
+			<quad {{{CC}}} sizen="20 0.5" bgcolor="eee"/>
+			<quad {{{CC}}} pos="0 -0.5" sizen="20 0.5" bgcolor="000"/>
+			<label {{{CC}}} id="Label_Countdown" pos="0 5" textprefix="$s" text="00:00" textfont="OswaldMono" textsize="6"/>
+		</frame>
+		<frame pos="0 70" z-index="10000" id="Frame_Scores">
+			<quad {{{CC}}} pos="-5.5 5" bgcolor="00f" opacity="0.25" size="9 9" />
+			<quad {{{CC}}} pos="5.5 5" bgcolor="f00" opacity="0.25" size="9 9" />
+			<label {{{CC}}} id="Label_Score1" size="9 9" pos="-5.5 5.5" z-index="1" textprefix="$s" text="0" textfont="Oswald" textsize="6"/>
+			<label {{{CC}}} id="Label_Score2" size="9 9" pos="5.5 5.5" z-index="1" textprefix="$s" text="0" textfont="Oswald" textsize="6"/>
+		</frame>
+		<frame id="Frame_Gauges" z-index="10000" pos="20 79">
+			<frameinstance id="Frame_Gauge_1" pos="0 0" modelid="Frame_GaugeModel"/>
+			<frameinstance id="Frame_Gauge_2" pos="0 -2.5" modelid="Frame_GaugeModel"/>
+			<frameinstance id="Frame_Gauge_3" pos="0 -5" modelid="Frame_GaugeModel"/>
+			<frameinstance id="Frame_Gauge_4" pos="0 -7.5" modelid="Frame_GaugeModel"/>
+		</frame>
+		
+		<framemodel id="Frame_GaugeModel">
+			<quad {{{LC}}} id="Quad_GaugeBackground" size="50 0.75" bgcolor="f00" opacity="0.25" />
+			<quad {{{LC}}} id="Quad_Gauge" z-index="1" size="10 0.75" bgcolor="00f" />
+			<quad {{{LC}}} id="Quad_ColoredHelper_1" pos="-1" size="1 0.75" bgcolor="f00" />
+			<quad {{{LC}}} id="Quad_ColoredHelper_2" pos="-1 0.5" size="2 0.5" bgcolor="f00" />
+			<quad {{{LC}}} id="Quad_ColoredHelper_3" pos="-1 -0.5" size="2 0.5" bgcolor="f00" />
+			<quad {{{LC}}} id="Quad_ColoredHelper_4" pos="50" size="1 1" bgcolor="00f" />
+		</framemodel>
+		
+		<script><!--
+			#Include "TextLib" as TextLib
+		
+			main()
+			{
+				declare CMlFrame[] Frame_Gauges;
+				for (i, 1, 4)
+				{
+					declare frame <=> (Page.GetFirstChild("Frame_Gauge_" ^ i) as CMlFrame);
+					Frame_Gauges.add(frame);
+					
+					declare CMlQuad[] ColoredHelpers for frame;
+					declare CMlQuad GaugeBackground for frame <=> (frame.GetFirstChild("Quad_GaugeBackground") as CMlQuad);
+					declare CMlQuad Gauge for frame <=> (frame.GetFirstChild("Quad_Gauge") as CMlQuad);
+					
+					for (i, 1, 4)
+						ColoredHelpers.add((frame.GetFirstChild("Quad_ColoredHelper_" ^ i) as CMlQuad));
+				}
+				
+				declare Label_Countdown <=> (Page.GetFirstChild("Label_Countdown") as CMlLabel);
+				declare Frame_Coutdown <=> (Page.GetFirstChild("Frame_Countdown") as CMlFrame);
+				declare Frame_Scores <=> (Page.GetFirstChild("Frame_Scores") as CMlFrame);
+				declare Label_Scores =
+				[
+					1 => (Page.GetFirstChild("Label_Score1") as CMlLabel),
+					2 => (Page.GetFirstChild("Label_Score2") as CMlLabel)
+				];
+				
+				declare netread Net_StormiumGoalCount for Teams[0] = 4;
+				declare netread Net_StormiumGoalNames for Teams[0] = Text[Integer];
+				declare netread Net_StormiumGoalValues for Teams[0] = Real[Integer];
+				declare netread Net_StormiumGoalColorsDef for Teams[0] = Vec3[Integer];
+				declare netread Net_StormiumGoalColorsAtk for Teams[0] = Vec3[Integer];
+				declare netread Net_ArenaEndTime for Teams[0] = 0;
+				declare netread Net_StormiumPolesIndex for Teams[0] = Integer[];
+				declare netread Net_ITCustomCoutdown for Teams[0] = False;
+				declare netread Net_ITCustomScores for Teams[0] = False;
+				declare netread Net_ITClanScores for Teams[0] = [1 => 0, 2 => 0];
+				
+				declare CurrentMode = "{{{G_CurrentMode}}}";
+				
+				while(True)
+				{
+					yield;
+					
+					for (i, 1, 2)
+						Label_Scores[i].Value = "" ^ Net_ITClanScores[i];
+					
+					if ((Net_ArenaEndTime - ArenaNow) > 0)
+						Label_Countdown.SetText(TextLib::TimeToText(Net_ArenaEndTime - ArenaNow, False));
+					else
+						Label_Countdown.SetText("??:??");
+						
+					Frame_Coutdown.Visible = Net_ITCustomCoutdown;
+					Frame_Scores.Visible = Net_ITCustomScores;
+					
+					foreach (i => frame in Frame_Gauges)
+					{
+						if ((Net_StormiumPolesIndex.count <= 0 && i >= Net_StormiumGoalCount)
+						|| (Net_StormiumPolesIndex.count > 0 && i >= Net_StormiumPolesIndex.count))
+						{
+							frame.Hide();
+							
+							continue;
+						}
+						else
+							frame.Show();
+							
+						declare CMlQuad[] ColoredHelpers for frame;
+						declare CMlQuad GaugeBackground for frame;
+						declare CMlQuad Gauge for frame;
+						
+						if (Net_StormiumPolesIndex.count <= 0)
+						{
+							if (Net_StormiumGoalColorsDef.existskey(i))
+							{
+								GaugeBackground.BgColor = Net_StormiumGoalColorsDef[i];
+								ColoredHelpers[0].BgColor = GaugeBackground.BgColor;
+								ColoredHelpers[1].BgColor = GaugeBackground.BgColor;
+								ColoredHelpers[2].BgColor = GaugeBackground.BgColor;
+							}
+							else
+								GaugeBackground.BgColor = <1., 1., 1.>;
+								
+							if (Net_StormiumGoalColorsAtk.existskey(i))
+							{
+								Gauge.BgColor = Net_StormiumGoalColorsAtk[i];
+								ColoredHelpers[3].BgColor = Gauge.BgColor;
+							}
+							else
+								Gauge.BgColor = <0., 0., 0.>;
+								
+							if (Net_StormiumGoalValues.existskey(i))
+								Gauge.Size.X = Net_StormiumGoalValues[i] * 50;
+							else
+								Gauge.Size.X = 0.;
+						}
+						else
+						{
+							if (Net_StormiumPolesIndex.existskey(i))
+							{
+								declare PoleIndex = Net_StormiumPolesIndex[i];
+								if (MapLandmarks.existskey(PoleIndex))
+								{
+									declare landmark <=> MapLandmarks[PoleIndex];
+									if (landmark.Base != Null && landmark.Base.Clan > 0
+										&& landmark.Base.Clan < 3)
+										GaugeBackground.BgColor = Teams[landmark.Base.Clan - 1].ColorPrimary;								
+									else
+										GaugeBackground.BgColor = <0., 0., 0.>;	
+										
+									if (landmark.Gauge != Null 
+									&& landmark.Gauge.Clan > 0
+									&& landmark.Gauge.Clan < 3)
+									{
+										Gauge.BgColor = Teams[landmark.Gauge.Clan - 1].ColorPrimary;
+										Gauge.Size.X = landmark.Gauge.ValueReal * 50; 
+									}				
+									else
+									{
+										Gauge.BgColor = <1., 1., 1.>;	
+										Gauge.Size.X = 0.;
+									}
+								}
+							}
+						}
+			
+						ColoredHelpers[0].BgColor = GaugeBackground.BgColor;
+						ColoredHelpers[1].BgColor = GaugeBackground.BgColor;
+						ColoredHelpers[2].BgColor = GaugeBackground.BgColor;
+						ColoredHelpers[3].BgColor = Gauge.BgColor;		
+					}
+				}
+			}
+		--></script>
+	</manialink>
+	""";
+}
+
+Text GetMarkersLayer(Text CurrentMode)
+{
+	declare Instances = Text;
+	for (i, 1, 15)
+	{
+		Instances ^= """<frameinstance id="Frame_Markers#{{{i}}}" modelid="FrameModel_Marker" />""";
+	}
+
+	return """
+	<manialink version="3">
+		<frame id="Frame_ForcefieldVictim" pos='0 2.5'>
+			<label {{{CC}}} pos="0 -2" text="$f00$s$n"/>
+			<label {{{CC}}} pos="0 2" text="$f00$s$nForcefield" textsize="2" textfont="RajdhaniMono"/>
+		</frame>
+		<frame id="Frame_CurseVictim" pos='0 2.5'>
+			<label {{{CC}}} pos="0 -2" text="$f00$s$n"/>
+			<label {{{CC}}} pos="0 2" text="$f00$s$nCursed" textsize="2" textfont="RajdhaniMono"/>
+		</frame>
+		<framemodel id="FrameModel_Marker" z-index="100" scale="0.775">
+			<label {{{RC}}} id="Label_CaptureProgression" pos="15 5.5" textprefix="$n$s" text="95% CAPTURED" textfont="OswaldMono" textsize="1.5"/>
+			<label {{{CC}}} id="Label_Pole" pos="0 1.25" textprefix="$s$n" text="East Container" textfont="RajdhaniMono"/>
+			<label {{{CC}}} pos="0 -1.25" text="$s⏷" textfont="RajdhaniMono" />
+		</framemodel>
+		
+		
+		{{{Instances}}}
+		
+		<script><!--
+			#Include "MathLib" as MathLib
+			
+			declare CMlFrame Frame_ForcefieldVictim;
+			declare CMlFrame Frame_CurseVictim;
+			
+			Void DoAgEThings()
+			{
+				declare ClientMarkers for LocalUser = Text[Text];
+				declare ForcefieldVictim = CSmPlayer;
+				declare CurseVictim = CSmPlayer;
+			
+				if (GUIPlayer != Null)
+				{
+					declare netread Net_ForcefieldVictimLogin for GUIPlayer = Text;
+					declare netread Net_CurseVictimLogin for GUIPlayer = Text;
+					
+					foreach (player in Players)
+					{
+						if (player.User.Login == Net_ForcefieldVictimLogin)
+						{
+							ForcefieldVictim <=> player;
+						}
+						if (player.User.Login == Net_CurseVictimLogin)
+						{
+							CurseVictim <=> player;
+						}
+					}
+				}
+				
+				if (ForcefieldVictim != Null && ForcefieldVictim != GUIPlayer)
+				{
+					Frame_ForcefieldVictim.Show();
+					ClientMarkers["stormiumit"] ^= "<marker playerlogin='" ^ ForcefieldVictim.User.Login ^ "' manialinkframeid='Frame_ForcefieldVictim' />";
+				}
+				else
+					Frame_ForcefieldVictim.Hide();
+					
+				if (CurseVictim != Null && CurseVictim != GUIPlayer)
+				{
+					Frame_CurseVictim.Show();
+					
+					if (ForcefieldVictim == Null)
+						ClientMarkers["stormiumit"] ^= "<marker playerlogin='" ^ CurseVictim.User.Login ^ "' manialinkframeid='Frame_CurseVictim' />";
+					else
+						ClientMarkers["stormiumit"] ^= "<marker box='1 4 1' playerlogin='" ^ CurseVictim.User.Login ^ "' manialinkframeid='Frame_CurseVictim' />";
+				}
+				else
+					Frame_CurseVictim.Hide();
+			}
+		
+			main()
+			{
+				declare FrameMarkers = CMlFrame[];
+				for (i, 1, 15)
+				{
+					declare frame <=> (Page.GetFirstChild("Frame_Markers#" ^ i) as CMlFrame);
+					declare label_Pole for frame <=> (frame.GetFirstChild("Label_Pole") as CMlLabel);
+					declare label_CaptureProgression for frame <=> (frame.GetFirstChild("Label_CaptureProgression") as CMlLabel);
+					
+					FrameMarkers.add(frame);
+				}
+				
+				Frame_ForcefieldVictim <=> (Page.GetFirstChild("Frame_ForcefieldVictim") as CMlFrame);
+				Frame_CurseVictim <=> (Page.GetFirstChild("Frame_CurseVictim") as CMlFrame);
+				
+				declare netread Net_StormiumGoalCount for Teams[0] = 4;
+				declare netread Net_StormiumGoalNames for Teams[0] = Text[Integer];
+				declare netread Net_StormiumGoalPositions for Teams[0] = Vec3[Integer];
+				declare netread Net_StormiumGoalValues for Teams[0] = Real[Integer];
+				declare netread Net_StormiumGoalColorsDef for Teams[0] = Vec3[Integer];
+				declare netread Net_StormiumGoalColorsAtk for Teams[0] = Vec3[Integer];
+				declare netread Net_ArenaEndTime for Teams[0] = 0;
+				declare netread Net_StormiumPolesIndex for Teams[0] = Integer[];
+				declare netread Net_ITCustomCoutdown for Teams[0] = False;
+				declare netread Net_ITCustomScores for Teams[0] = False;
+				
+				declare CurrentMode = "{{{G_CurrentMode}}}";
+				declare ClientMarkers for LocalUser = Text[Text];
+				
+				while(True)
+				{
+					yield;
+					
+					if (CurrentMode == "{{{C_ModeChampions}}}")
+					{
+						Frame_ForcefieldVictim.Hide();
+						Frame_CurseVictim.Hide();
+					}
+					
+					ClientMarkers["stormiumit"] = "";
+					
+					foreach (i => frame in FrameMarkers)
+					{
+						if ((Net_StormiumPolesIndex.count <= 0 && i >= Net_StormiumGoalCount)
+						|| (Net_StormiumPolesIndex.count > 0 && i >= Net_StormiumPolesIndex.count))
+						{
+							frame.Hide();
+							
+							continue;
+						}
+						else
+							frame.Show();
+					
+						declare CMlLabel label_Pole for frame;
+						declare CMlLabel label_CaptureProgression for frame;
+						declare value = 0.;
+						declare clanColor = <0., 0., 0.>;
+						declare CaptureColor = "$fff";
+						declare Pos = Vec3;
+						
+						if (Net_StormiumGoalValues.existskey(i))
+							value = Net_StormiumGoalValues[i];
+							
+						if (Net_StormiumPolesIndex.existskey(i))
+						{
+							declare PoleIndex = Net_StormiumPolesIndex[i];
+							if (MapLandmarks.existskey(PoleIndex))
+							{
+								declare landmark <=> MapLandmarks[PoleIndex];
+								if (landmark.Base != Null && landmark.Base.Clan > 0
+									&& landmark.Base.Clan < 3)
+									clanColor = Teams[landmark.Base.Clan - 1].ColorPrimary;								
+								else
+									clanColor = <0., 0., 0.>;	
+									
+								if (landmark.Gauge != Null 
+								&& landmark.Gauge.Clan > 0
+								&& landmark.Gauge.Clan < 3)
+								{
+									value = landmark.Gauge.ValueReal; 
+								}				
+								else
+								{
+									value = 0.;
+								}
+								
+								Pos = landmark.Position;
+								Pos.Y += 26.;
+							}
+						}
+							
+						if (value < 1.)
+							label_CaptureProgression.SetText(MathLib::FloorInteger(value * 100.) ^ "% CAPTURED");
+						else
+						{
+							CaptureColor = "$4a4";
+							label_CaptureProgression.SetText("$4a4CAPTURED ");
+						}
+						
+						if (Net_StormiumGoalNames.existskey(i) && Net_StormiumGoalNames[i] != "")
+							label_Pole.SetText(CaptureColor ^ Net_StormiumGoalNames[i]);
+						else
+							label_Pole.SetText(CaptureColor ^ "#" ^ i); 
+							
+						declare labelCapturePos = label_Pole.ComputeWidth(label_Pole.Value) / 2.;
+						label_CaptureProgression.RelativePosition_V3.X = labelCapturePos;
+							
+						if (Net_StormiumGoalPositions.existskey(i))
+							Pos = Net_StormiumGoalPositions[i];
+						Pos.Y += 2.5;
+						
+						if (Pos != <0., 0., 0.>)
+							ClientMarkers["stormiumit"] ^= "<marker pos='" ^ Pos.X ^ " " ^ Pos.Y ^ " " ^ Pos.Z ^ "' manialinkframeid='" ^ frame.ControlId ^ "' />";
+						else
+							frame.Hide();
+					}
+					
+					if (CurrentMode == "{{{C_ModeAgE}}}")
+					{
+						DoAgEThings();
+					}
+				}
+			}
+		--></script>
+	</manialink>
+	""";
+}
+
+Text GetMainMarker()
+{
+	return """
+	<script><!--
+		main()
+		{
+			declare ClientMarkers for LocalUser = Text[Text];
+			ClientMarkers = Text[Text];
+			
+			while(True)
+			{
+				yield;
+				ClientUI.MarkersXML = "";
+				foreach (txt in ClientMarkers)
+				{
+					ClientUI.MarkersXML ^= txt;
+				}
+			}
+		}
+	--></script>
+	""";
+}
+
+Void Load(Text modeName)
+{
+	G_CurrentMode = modeName;
+
+	if (!Layers2::Exists(C_MainLayerName))
+		Layers2::Create(C_MainLayerName);
+	if (!Layers2::Exists(C_MarkersLayerName))
+		Layers2::Create(C_MarkersLayerName);
+	if (!Layers2::Exists("mainMarker"))
+		Layers2::Create("mainMarker");
+	
+	Layers2::Update(C_MainLayerName, GetMainLayer(G_CurrentMode));
+	Layers2::Update(C_MarkersLayerName, GetMarkersLayer(G_CurrentMode));
+	Layers2::Update("mainMarker", GetMainMarker());
+	Layers2::SetType(C_MarkersLayerName, CUILayer::EUILayerType::Markers);
+}
+
+Void SetActive(Boolean active)
+{
+	G_IsActive = active;
+}
+
+Boolean Get_IsActive()
+{
+	return G_IsActive;
+}
+
+Void UpdateNetValues()
+{
+	declare netwrite Net_StormiumGoalCount for Teams[0] = G_GoalCount;
+	declare netwrite Net_StormiumGoalNames for Teams[0] = G_GoalNames;
+	declare netwrite Net_StormiumGoalPositions for Teams[0] = G_GoalPositions;
+	declare netwrite Net_StormiumGoalValues for Teams[0] = G_GoalValues;
+	declare netwrite Net_StormiumGoalColorsDef for Teams[0] = G_GoalColorsDef;
+	declare netwrite Net_StormiumGoalColorsAtk for Teams[0] = G_GoalColorsAtk;
+	declare netwrite Net_StormiumPolesIndex for Teams[0] = G_PolesIndex;
+	declare netwrite Net_ITCustomCoutdown for Teams[0] = False;
+	declare netwrite Net_ITCustomScores for Teams[0] = False;	
+	
+	Net_StormiumGoalCount	= G_GoalCount;
+	Net_StormiumGoalNames	= G_GoalNames;
+	Net_StormiumGoalPositions = G_GoalPositions;
+	Net_StormiumGoalValues	= G_GoalValues;
+	Net_StormiumGoalColorsDef	= G_GoalColorsDef;
+	Net_StormiumGoalColorsAtk	= G_GoalColorsAtk;
+	Net_StormiumPolesIndex			= G_PolesIndex;
+	Net_ITCustomCoutdown				= G_ITCustomCoutdownVisible;
+	Net_ITCustomScores					= G_ITCustomScoresVisible;
+}
+
+Void SetGoalCount(Integer goalCount)
+{
+	G_GoalCount = goalCount;
+	
+	UpdateNetValues();
+}
+
+Void SetGoalName(Integer index, Text name)
+{
+	G_GoalNames[index] = name;
+	
+	UpdateNetValues();
+}
+
+Void SetGoalPosition(Integer index, Vec3 position)
+{
+	G_GoalPositions[index] = position;
+	
+	UpdateNetValues();
+}
+
+Void SetGoalValue(Integer index, Real realValue)
+{
+	G_GoalValues[index] = realValue;
+	
+	UpdateNetValues();
+}
+
+Void SetGoalColorDef(Integer index, Vec3 color)
+{
+	G_GoalColorsDef[index] = color;
+	
+	UpdateNetValues();
+}
+
+Void SetGoalColorAtk(Integer index, Vec3 color)
+{
+	G_GoalColorsAtk[index] = color;
+	
+	UpdateNetValues();
+}
+
+/*
+*
+* Usage: Index from CSmMode.MapLandmarks
+*/
+Void SetPolesIndex(Integer[] index)
+{
+	G_PolesIndex = index;
+	
+	UpdateNetValues();
+}
+
+Void ShowCustomCoutdown(Boolean visible)
+{
+	G_ITCustomCoutdownVisible = visible;
+	
+	UpdateNetValues();
+}
+
+Void ShowCustomScores(Boolean visible)
+{
+	G_ITCustomScoresVisible = visible;
+	
+	UpdateNetValues();
+}
+
+Void ShowCustomMarkers(Boolean visible)
+{
+	G_ITCustomMarkersVisible = visible;
+}
+
+Void Loop()
+{
+	if (G_IsActive)
+	{
+		Layers2::Attach(C_MainLayerName);
+		if (G_ITCustomMarkersVisible)
+			Layers2::Attach(C_MarkersLayerName);
+		else
+			Layers2::Detach(C_MarkersLayerName);
+	}
+	else
+	{
+		Layers2::Detach(C_MainLayerName);
+		Layers2::Detach(C_MarkersLayerName);
+	}
+	
+	Layers2::Attach("mainMarker");
+		
+	UIManager.UIAll.OverlayHideCountdown = G_IsActive && G_ITCustomCoutdownVisible;
+	
+	declare netwrite Net_ArenaEndTime for Teams[0] = 0;
+	if (EndTime != Net_ArenaEndTime)
+		Net_ArenaEndTime = EndTime;
+		
+	declare netwrite Net_ITClanScores for Teams[0] = Integer[Integer];
+	Net_ITClanScores[1] = ClanScores[1];
+	Net_ITClanScores[2] = ClanScores[2];
+}

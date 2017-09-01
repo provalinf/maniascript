@@ -1,0 +1,81 @@
+
+
+/*
+ *	Mode melee
+ */
+
+#Extends "Modes/ShootMania/AgeV2.Script.txt"
+
+#Const EGameKit_Soldier		"soldier"
+#Const EGameKit_Sniper			"sniper"
+#Const EGameKit_Medic			2
+#Const EGameKit_Engineer		"engineer"
+#Const EGameKit_Assassin		4
+
+#Const EM_Soldier "soldier"
+#Const EM_Engineer "engineer"
+#Const EM_Sniper "sniper"
+#Const EM_Medic "medic"
+#Const EM_Ninja "ninja"
+#Const EM_Mage "mage"
+
+#Const EW_MultiPlasma "Multiplasma"
+#Const EW_MiniGun "Minigun"
+#Const EW_Grenade "Grenade"
+#Const EW_Shotgun "Shotgun"
+#Const EW_SelfHeal "SelfHeal"
+#Const EW_Snipergun "Snipergun"
+#Const EW_BouncingBall "BouncingBall"
+#Const EW_ADN "ADN"
+#Const EW_Knife "Knife"
+#Const EW_Medigun "Medigun"
+#Const EW_Forcefield "Forcefield"
+#Const EW_CurseTarget "CurseTarget"
+#Const EW_BumpHell "BumpHell"
+#Const EW_SmokeGrenade "SmokeGrenade"
+#Const EW_Disguise "Disguise"
+#Const EW_EagleEye "EagleEye"
+#Const EW_SwitchAction "SwitchAction"
+
+#Const C_TurretModelPath ""
+
+declare Ident[Text] ActionId;
+declare Ident[Text] ModelId;
+declare Ident TurretId;
+declare CModeTurret Turret;
+
+***Match_StartServer***
+***
+	Kits::StartServer();
+***
+
+***Match_StartMap***
+***
+	TurretsManager.MapTurrets_Reset();
+	DestroyAllBotPlayers();
+***
+
+***OnActionCustomEvent***
+***
+	Kits::OnActionCustomEvent(e);
+***
+
+***Match_Yield***
+***
+	Kits::Yield();
+***
+
+***Match_PlayLoop***
+***
+	Kits::PlayLoop();
+***	
+
+***Match_EndMap***
+***
+	DestroyAllBotPlayers();
+***
+
+Void Do()
+{
+
+}
