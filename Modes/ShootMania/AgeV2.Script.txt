@@ -109,8 +109,9 @@ declare CSmPlayer[] spectatorList;
 	
 	AFK::SetIdleTimeLimit(S_AFKIdleTimeLimit);
 	AutoServerStartVoteBalance = False;
-	BalanceType = 2;
+	BalanceType = 2;	// Type de vote par défaut si aucun vote entre temps pour l'AutoServerStartVoteBalance
 	
+	MapWinner = 0;
 	MapMinTime = 0.;
 	StartPrevMapTime = 0;
 	
@@ -129,11 +130,11 @@ declare CSmPlayer[] spectatorList;
 If they succed, they win 1 points. If they don't, Defenders win 1 point.
 If they succed they will have to rush to the goal UNDER 30 SECONDS to get a SECOND POINT.
 The team with a number of 6 points win.""");
-	StormiumSS::SetDescription("""? In attack or defense, you can choose among 5 kits ! 
+	StormiumSS::SetDescription("""► In attack or defense, you can choose among 5 kits ! 
 You have a main weapon + other weapons/actions.
 
-? In each game, 2 players are selected randomly to be the $0dd?King of Cryo$fff (in Attackers team),
-and the $e80? King of Meteor$fff (in Defenders team).
+► In each game, 2 players are selected randomly to be the $0dd❄King of Cryo$fff (in Attackers team),
+and the $e80🔥 King of Meteor$fff (in Defenders team).
 They have a great power thanks to STORMIUM ! 
 They have 300HP and mass destruction weapons !""");
 	StormiumSS::SetScoreManialink(GetScoreManialink());
@@ -266,7 +267,7 @@ OpenLink("https://discordapp.com/invite/BBHC3sT", CMlScript::LinkType::ExternalB
 	
 	Layers::Update("CGame.SpawnInterface", layer_GetSpawnInterface());
 
-	if (!BalancingIsRequired)
+	if (!BalancingIsRequired && MapWinner != 0)
 		if (MapMinTime + StartPrevMapTime > Now) {
 			AutoServerStartVoteBalance = True;
 			refreshVoteBalance();
@@ -280,7 +281,7 @@ OpenLink("https://discordapp.com/invite/BBHC3sT", CMlScript::LinkType::ExternalB
 	
 	declare serverTimes = S_TimeSelectionTime * 1000 + S_RushTimeGateDuration + 100000;	// ~100000 somme des temporisations de parties
 	MapMinTime = S_TimeToCaptureCheckpoint * nbChecksOnMap * S_CoeffTimeLimitCaptureCheckpointAutoTeamBalanceVote * 1000;
-	if (!IsRangedMap) MapMinTime += S_EndTime;
+	if (!IsRangedMap) MapMinTime += S_EndTime * 60000;
 	else MapMinTime -= 20000;
 	MapMinTime += serverTimes;
 	UIManager.UIAll.SendChat("Temps minTime : "^MapMinTime/1000);
@@ -988,6 +989,11 @@ Void UpdateGetVariables()
 	return sumRank;
 }*/
 
+/*
+ * Somme des ranks de la liste d'id joueurs
+ *
+ * @params : identsClan : Liste d'id joueurs
+ */
 Integer RankClan(Ident[] identsClan) {
 	declare sumRank = 0;
 	foreach (id in identsClan)
@@ -997,6 +1003,11 @@ Integer RankClan(Ident[] identsClan) {
 	return sumRank;
 }
 
+/*
+ * Somme des scores de la liste d'id joueurs
+ *
+ * @params : identsClan : Liste d'id joueurs
+ */
 Integer ScoreClan(Ident[] identsClan) {
 	declare sumScore = 0;
 	foreach (id in identsClan)
@@ -1227,6 +1238,12 @@ Void BalanceTeams(Integer balanceType) {
 	//LastTimeBalance = Now;
 }
 
+/*
+ * Équilibrage d'un nouveau joueur
+ * valable pour un nouvel arrivant ou une bascule spectateur -> joueur
+ *
+ * @params : Player : Joueur concerné
+ */
 Integer dispatchNewOrSpectPlayerClan(CSmPlayer Player) {
 	declare Ident[] playersClan1;
 	declare Ident[] playersClan2;
@@ -1258,6 +1275,10 @@ Integer dispatchNewOrSpectPlayerClan(CSmPlayer Player) {
 	return 2;
 }
 
+/*
+ * Lance/actualise le vote pour l'équilibrage des équipes
+ * Si AutoServerStartVoteBalance : vote automatique lancé par le serveur
+ */
 Void refreshVoteBalance() {
 	if (VoteBalanceResult.count != 3) {	// Lancement du serveur
 		BalancingIsRequired = False;
@@ -1293,7 +1314,6 @@ Void refreshVoteBalance() {
 					TimeStartVote = Now;
 					
 					VoteBalanceResult[0].add(player.User.Login);
-					log("hop vote");
 				}
 				_lastCallForBalance = Net_CallForBalance;
 			}
@@ -1301,8 +1321,9 @@ Void refreshVoteBalance() {
 			declare netread Net_PlayerVote for UI = 0;	// /!\ option+1
 			declare _PlayerVote for UI = 0;
 			if (_PlayerVote != Net_PlayerVote) {
-				declare playerVote = (Net_PlayerVote - _PlayerVote) - 1;
-				
+				declare Integer playerVote;
+				playerVote = (Net_PlayerVote - _PlayerVote) - 1;
+				//UIManager.UIAll.SendChat("playervote"^playerVote^" player : "^player.User.Login);
 				if (!VoteBalanceResult[playerVote].exists(player.User.Login)) {
 					foreach (key => elem in VoteBalanceResult) {	// Utilité plus que limité // fuck maniascript
 						if (key == playerVote) {
@@ -1319,43 +1340,49 @@ Void refreshVoteBalance() {
 		}					
 	}
 
-	if (BalancingIsRequired && TimeStartVote + S_TimeToVoteBalance < Now) {	// End vote
-		BalancingIsRequired = False;
-		UIManager.UIAll.SendChat("Le vote est passé");
-		UIManager.UIAll.SendChat("Yes "^VoteBalanceResult[0].count);
-		UIManager.UIAll.SendChat("No "^VoteBalanceResult[1].count);
-		UIManager.UIAll.SendChat("Other "^VoteBalanceResult[2].count);
+	if (BalancingIsRequired /*&& TimeStartVote + S_TimeToVoteBalance < Now*/) {	// End vote
 		declare Real nbVotant = 0.;
 		foreach (option in VoteBalanceResult) nbVotant += option.count;
-		
-		if (nbVotant > 0) {
-			declare Real[] tmpRatio;
-			foreach (option in VoteBalanceResult)
-				tmpRatio.add(option.count / nbVotant);
 
-			if (tmpRatio[0] >= tmpRatio[2] && tmpRatio[0]+tmpRatio[2] >= S_RatioToValideVoteBalance) {
-				// vote equilibrage par option defaut
-				if (BalanceType == 1) {
-					UIManager.UIAll.SendChat("Équilibrage par ranks");
-					BalanceTeams(1);
+		if (TimeStartVote + S_TimeToVoteBalance < Now
+			 || (AutoServerStartVoteBalance && nbVotant - 1 == AllPlayers.count)
+			 || (!AutoServerStartVoteBalance && nbVotant == AllPlayers.count)) {
+			
+			BalancingIsRequired = False;
+			UIManager.UIAll.SendChat("Le vote est passé");
+			UIManager.UIAll.SendChat("Yes "^VoteBalanceResult[0].count);
+			UIManager.UIAll.SendChat("No "^VoteBalanceResult[1].count);
+			UIManager.UIAll.SendChat("Other "^VoteBalanceResult[2].count);
+		
+			if (nbVotant > 0) {
+				declare Real[] tmpRatio;
+				foreach (option in VoteBalanceResult)
+					tmpRatio.add(option.count / nbVotant);
+
+				if (tmpRatio[0] >= tmpRatio[2] && tmpRatio[0]+tmpRatio[2] >= S_RatioToValideVoteBalance) {
+					// vote equilibrage par option defaut
+					if (BalanceType == 1) {
+						UIManager.UIAll.SendChat("Équilibrage par ranks");
+						BalanceTeams(1);
+					} else {
+						UIManager.UIAll.SendChat("Équilibrage par scores");
+						BalanceTeams(2);
+					}
+				} else if (tmpRatio[2] > tmpRatio[0] && tmpRatio[0]+tmpRatio[2] >= S_RatioToValideVoteBalance) {
+					// vote equilibrage par option inverse
+					if (BalanceType == 1) {
+						UIManager.UIAll.SendChat("Équilibrage par scores");
+						BalanceTeams(2);
+					} else {
+						UIManager.UIAll.SendChat("Équilibrage par ranks");
+						BalanceTeams(1);
+					}
 				} else {
-					UIManager.UIAll.SendChat("Équilibrage par scores");
-					BalanceTeams(2);
+					UIManager.UIAll.SendChat("Équilibrage refusé");
 				}
-			} else if (tmpRatio[2] > tmpRatio[0] && tmpRatio[0]+tmpRatio[2] >= S_RatioToValideVoteBalance) {
-				// vote equilibrage par option inverse
-				if (BalanceType == 1) {
-					UIManager.UIAll.SendChat("Équilibrage par scores");
-					BalanceTeams(2);
-				} else {
-					UIManager.UIAll.SendChat("Équilibrage par ranks");
-					BalanceTeams(1);
-				}
-			} else {
-				UIManager.UIAll.SendChat("Équilibrage refusé");
 			}
+			AutoServerStartVoteBalance = False;
 		}
-		AutoServerStartVoteBalance = False;
 	}
 	
 	declare netwrite Net_BalancingIsRequired for Teams[0] = BalancingIsRequired;
@@ -1509,7 +1536,7 @@ Text layer_GetSpawnInterface()
 		</frame>-->
 		
 		<frame posn="0 0 0" id="Frame_AtkInfo">
-			<label id="Label_AtkInfo" {{{CC}}} text="You are attacking!" textprefix="$s" textfont="OswaldMono"/>
+			<label id="Label_AtkInfo" {{{CC}}} text="You are attacking!" textprefix="$s" textfont="OswaldMono" hidden="1"/>
 		</frame>
 		
 		<!--<frame posn="0 0 10" id="Clip_FrameKitInfo" clipsizen="180 80" clip="1"  z-index="2" clipposn="0 0">
@@ -1548,7 +1575,7 @@ Text layer_GetSpawnInterface()
 		
 		
 		<!-- Panneau de vote -->
-		<frame pos="-124 76" scale="0.8" z-index="2" id="votePane">
+		<frame pos="-124 76" scale="0.8" z-index="2" id="votePane" hidden="1">
 			<label pos="55.8 -0.20" z-index="2" id="LabelVote" size="116 7.6" textprefix="$s" text="xxxx $z$s$fff, requires a balancing of teams according $0D0to xxxx" textsize="2" halign="center" valign="center"/>
 			<label pos="-6 0.5" z-index="2" id="countdown" size="7 7" textprefix="$s" text="60" textsize="0.6" halign="center" valign="center" rot="-40" opacity=".9"/>
 			<label pos="-6.6 0.6" z-index="2" text=" " halign="center" valign="center" textsize="3.2" opacity=".6"/>
@@ -1705,12 +1732,12 @@ Text layer_GetSpawnInterface()
 		<frame pos="130 25" id="FrameViewKits" z-index="2">
 			<frame posn="-2 -25" z-index="1">
 				<frameinstance modelid="fm_Class" id="Frame_Class1" posn="0 40"/>
-				<frameinstance modelid="fm_Class" id="Frame_Class2" posn="0 25"/>
-				<frameinstance modelid="fm_Class" id="Frame_Class3" posn="0 10"/>
-				<frameinstance modelid="fm_Class" id="Frame_Class4" posn="0 -5"/>
-				<frameinstance modelid="fm_Class" id="Frame_Class5" posn="0 -20"/>
-				<frameinstance modelid="fm_Class" id="Frame_Class6" posn="0 -35"/>
-				<frameinstance modelid="fm_Class" id="Frame_Class7" posn="0 -50"/>
+				<frameinstance modelid="fm_Class" id="Frame_Class2" posn="0 26"/>
+				<frameinstance modelid="fm_Class" id="Frame_Class3" posn="0 12"/>
+				<frameinstance modelid="fm_Class" id="Frame_Class4" posn="0 -2"/>
+				<frameinstance modelid="fm_Class" id="Frame_Class5" posn="0 -16"/>
+				<frameinstance modelid="fm_Class" id="Frame_Class6" posn="0 -30"/>
+				<frameinstance modelid="fm_Class" id="Frame_Class7" posn="0 -44"/>
 			</frame>
 			
 			<frame pos="-101 -12" z-index="0">
@@ -1720,8 +1747,8 @@ Text layer_GetSpawnInterface()
 				<label halign="center" valign="center" textcolor="fff" text="$fff⏷" sizen="40 10" scale="2"  pos="118 41.7" />
 
 		 		<!-- Background -->
-				<quad posn="65.6 38.6" z-index="1" sizen="65 99" bgcolor="FFFA" style="BgsPlayerCard" substyle="ProgressBar" opacity=".6" colorize="000"/>
-				<quad posn="65.6 38.6" z-index="0" sizen="65 99" bgcolor="FFFA" style="Bgs1" substyle="BgButtonGrayed" opacity=".0"/>
+				<quad posn="65.2 38.6" z-index="1" sizen="65.4 107" bgcolor="FFFA" style="BgsPlayerCard" substyle="ProgressBar" opacity=".6" colorize="000"/>
+				<quad posn="65.2 38.6" z-index="0" sizen="65.4 107" bgcolor="FFFA" style="Bgs1" substyle="BgButtonGrayed" opacity=".0"/>
 			</frame>
 		</frame>
 		
@@ -1923,15 +1950,16 @@ Text layer_GetSpawnInterface()
 				
 				declare netread Net_MatchIsRunning for Teams[0] = False;
 				
-				if (ActivePlayer != Null && Net_MatchIsRunning)
+				if (ActivePlayer != Null && Net_MatchIsRunning && !IsSpectator)
 				{
+					Label_AtkInfo.Visible = True;
 					if (ActivePlayer.CurrentClan == Net_AttackingClan)
 						Label_AtkInfo.SetText("You are attacking!");
 					else if (ActivePlayer.CurrentClan == 3 - Net_AttackingClan)
 						Label_AtkInfo.SetText("You are defending!");
 				}
 				else
-					Label_AtkInfo.SetText("");
+					Label_AtkInfo.Visible = False; // Permet un hidden=1 dans le manialink lors des changements de map
 			}
 			
 			Void ManageFramePos(Real deltaTime)
