@@ -21,7 +21,7 @@
 #Include "Libs/Domino54/PauseMenu2.Script.txt" as PauseMenu
 
 #Const	CompatibleMapTypes	"TeamDeathmatchArena, AgeArena"
-#Const	Version				"2017-08-31"
+#Const	Version				"2017-09-03"
 #Const	ScriptName			"Modes/ShootMania/AgeV2.Script.txt"
 
 #Const m_MiniMapSize <60., 60.>
@@ -271,9 +271,9 @@ OpenLink("https://discordapp.com/invite/BBHC3sT", CMlScript::LinkType::ExternalB
 		if (MapMinTime + StartPrevMapTime > Now) {
 			AutoServerStartVoteBalance = True;
 			refreshVoteBalance();
-			UIManager.UIAll.SendChat("Temps minimum non dépassé, partie trop courte : "^(StartPrevMapTime + MapMinTime)/1000^"s, Now: "^Now/1000^"s");
+			log("Temps minimum non dépassé, partie trop courte : "^(StartPrevMapTime + MapMinTime)/1000^"s, Now: "^Now/1000^"s");
 		} else {
-			UIManager.UIAll.SendChat("Temps minimum dépassé, partie ok : "^(StartPrevMapTime + MapMinTime)/1000^"s, Now: "^Now/1000^"s");
+			log("Temps minimum dépassé, partie ok : "^(StartPrevMapTime + MapMinTime)/1000^"s, Now: "^Now/1000^"s");
 		}
 	
 	declare nbChecksOnMap = 1; // 1 pour le pole de rush, permet d'équilibrer le calcul (déplacement du joueur sur la map non compté...)
@@ -284,7 +284,7 @@ OpenLink("https://discordapp.com/invite/BBHC3sT", CMlScript::LinkType::ExternalB
 	if (!IsRangedMap) MapMinTime += S_EndTime * 60000;
 	else MapMinTime -= 20000;
 	MapMinTime += serverTimes;
-	UIManager.UIAll.SendChat("Temps minTime : "^MapMinTime/1000);
+	log("Temps mapMinTime : "^MapMinTime/1000^"s");
 	
 	StartTime = Now;
 	StartPrevMapTime = Now;
@@ -420,7 +420,7 @@ OpenLink("https://discordapp.com/invite/BBHC3sT", CMlScript::LinkType::ExternalB
 ***
 	// Debug -- Start
 	/*log("Connexion de "^Player.User.Id);*/
-	UIManager.UIAll.SendChat("Nouveau joueur "^Player.User.Login^", redirigé vers l'équipe n°"^dispatchNewOrSpectPlayerClan(Player));
+	//log("Nouveau joueur "^Player.User.Login^", redirigé vers l'équipe n°"^dispatchNewOrSpectPlayerClan(Player));
 	// Debug -- End
 	SetPlayerClan(Player, dispatchNewOrSpectPlayerClan(Player));
 ***
@@ -441,14 +441,9 @@ OpenLink("https://discordapp.com/invite/BBHC3sT", CMlScript::LinkType::ExternalB
 
 ***Match_PlayLoop***
 ***	
-log("Temps min : "^(StartPrevMapTime + MapMinTime)/1000^"s, Now: "^Now/1000^"s");
+	//log("Temps min : "^(StartPrevMapTime + MapMinTime)/1000^"s, Now: "^Now/1000^"s");
 	declare netwrite Net_MatchStartTime for Teams[0] = 0;
 	Net_MatchStartTime = MatchStartTime;
-
-	/*if (LastTimeBalance + 3000 < Now && MathLib::Abs(GetNbPlayers(1) - GetNbPlayers(2)) > 1)
-	{
-		BalanceTeams();
-	}*/
 
 	foreach (e in PendingEvents)
 	{
@@ -482,20 +477,17 @@ log("Temps min : "^(StartPrevMapTime + MapMinTime)/1000^"s, Now: "^Now/1000^"s")
 	foreach (player in AllPlayers) {
 		if (player != Null) {
 			if (Players.exists(player) && spectatorList.exists(player)) {
-				UIManager.UIAll.SendChat("Passage de spectateur à joueur pour "^player.User.Login);
+				// Passage de spectateur à joueur
 				spectatorList.remove(player);
-
 				declare Integer PlayerClan for player;
 				PlayerClan = dispatchNewOrSpectPlayerClan(player);
 				declare TempoPlayerRequestedClan for player = 0;
 				TempoPlayerRequestedClan = Now;
 				UnspawnPlayer(player);
 				SetPlayerClan(player, PlayerClan);	// Important également si le round n'est pas actif
-				/*log("Connexion de "^Player.User.Id);*/
-				UIManager.UIAll.SendChat("Joueur "^player.User.Login^", redirigé vers l'équipe n°"^PlayerClan);
-			
+				log("Joueur "^player.User.Login^", redirigé vers l'équipe n°"^PlayerClan);
 			} else if (!Players.exists(player) && !spectatorList.exists(player)) {
-				UIManager.UIAll.SendChat("Passage de joueur à spectateur pour "^player.User.Login);
+				// Passage de joueur à spectateur
 				spectatorList.add(player);
 			}
 		}
@@ -521,25 +513,7 @@ log("Temps min : "^(StartPrevMapTime + MapMinTime)/1000^"s, Now: "^Now/1000^"s")
 			declare TempoPlayerRequestedClan for player = 0;
 			if (TempoPlayerRequestedClan + S_AFKSpawnSelectTimeLimit < Now)
 				PlayerClan = player.RequestedClan;
-			/*if (MathLib::Abs(GetNbPlayers(1) - GetNbPlayers(2)) <= 2)
-				PlayerClan = player.RequestedClan;
-			if (PlayerClan == 0)
-				PlayerClan = GetTeam();
-				
-			if (MathLib::Abs(GetNbPlayers(1) - GetNbPlayers(2)) >= 2)
-				PlayerClan = GetTeam();
 			
-				
-			declare oldPlayerClan = player.CurrentClan;
-			
-			if (oldPlayerClan != PlayerClan)
-			{
-				declare UI <=> UIManager.GetUI(player);
-				if (UI != Null)
-				{
-					UI.SendChat("$999Team notice: $fffYou was redirected to " ^ Teams[PlayerClan - 1].ColorizedName ^ " team"); 
-				}
-			}*/
 			SetPlayerClan(player, PlayerClan);
 			
 			declare UI <=> UIManager.GetUI(player);
@@ -954,41 +928,6 @@ Void UpdateGetVariables()
 	Net_OvertimeEndTime = OvertimeEndTime;
 }
 
-/*Integer GetNbPlayers(Integer clan)
-{
-	declare count = 0;
-	foreach (player in Players)
-	{
-		declare PlayerClan for player = 0;
-		if (PlayerClan == clan)
-			count += 1;
-	}
-	return count;
-}*/
-
-/*Integer GetTeam()
-{
-	if (GetNbPlayers(1) > GetNbPlayers(2))
-		return 2;
-	else if (GetNbPlayers(2) > GetNbPlayers(1))
-		return 1;
-	return AttackingClan;
-}*/
-
-
-
-
-/*Integer RankClan(Integer clan) {
-	declare sumRank = 0;
-	
-	foreach (player in Players) {
-		declare Integer PlayerClan for player;
-		if (PlayerClan == clan && player.User.LadderRank >= 0)
-			sumRank += player.User.LadderRank;
-	}
-	return sumRank;
-}*/
-
 /*
  * Somme des ranks de la liste d'id joueurs
  *
@@ -1046,7 +985,7 @@ Boolean BalanceSearchRanks(Ident[] identsPlayers, Integer deltaRankInit, Integer
 	
 	//sleep(100);		// Debug
 	if (keyPlayerStart < identsPlayers.count) {
-		UIManager.UIAll.SendChat("accès : "^identsPlayers[keyPlayerStart]^" : "^keyPlayerStart);	// Debug
+		//UIManager.UIAll.SendChat("accès : "^identsPlayers[keyPlayerStart]^" : "^keyPlayerStart);	// Debug
 		
 		declare id = identsPlayers[keyPlayerStart];
 		declare tmpClan1 = CpyList(playersClan1);
@@ -1078,7 +1017,7 @@ Boolean BalanceSearchScores(Ident[] identsPlayers, Integer deltaScoreInit, Integ
 	
 	//sleep(100);		// Debug
 	if (keyPlayerStart < identsPlayers.count) {
-		UIManager.UIAll.SendChat("accès : "^identsPlayers[keyPlayerStart]^" : "^keyPlayerStart);	// Debug
+		//UIManager.UIAll.SendChat("accès : "^identsPlayers[keyPlayerStart]^" : "^keyPlayerStart);	// Debug
 		
 		declare id = identsPlayers[keyPlayerStart];
 		declare tmpClan1 = CpyList(playersClan1);
@@ -1202,18 +1141,11 @@ Void BalanceTeams(Integer balanceType) {
 			playersClan2.add(player.User.Id);
 	}
 	
-	/*if (Now - LastTimeBalance < 3000) {	// Constante à définir
-		// Ajustement en fonction des scores
-		return;
-		UIManager.UIAll.SendChat("Teams are now adjusted in term of score.");
-	} else {*/
-		// Équilibrage en fonction des ranks
-		BalanceSearch(idPlayers, balanceType);
-		if (balanceType == 1)
-			UIManager.UIAll.SendChat("Teams are now balanced in term of ranks.");
-		else
-			UIManager.UIAll.SendChat("Teams are now balanced in term of scores.");
-	//}
+	BalanceSearch(idPlayers, balanceType);
+	if (balanceType == 1)
+		UIManager.UIAll.SendChat("Teams are now balanced in term of ranks.");
+	else
+		UIManager.UIAll.SendChat("Teams are now balanced in term of scores.");
 	
 	foreach (player in Players) {	
 		declare oldPlayerClan = player.CurrentClan;
@@ -1259,14 +1191,13 @@ Integer dispatchNewOrSpectPlayerClan(CSmPlayer Player) {
 
 	declare playerScore = Player.Score.Points + Player.Score.RoundPoints;
 	if (playerScore > 0) {
-		UIManager.UIAll.SendChat("équilibrage par score");
 		// Équilibrage par score (probable passage de spectateur à joueur)
 		if (MathLib::Abs((ScoreClan(playersClan1)+playerScore) - ScoreClan(playersClan2))
 				<= MathLib::Abs(ScoreClan(playersClan1) - (ScoreClan(playersClan2)+playerScore)))
 			return 1;
 		return 2;			
 	}
-	UIManager.UIAll.SendChat("équilibrage par rank");
+
 	// Équilibrage par rank (probable nouvelle connexion)
 	declare playerRank = Player.User.LadderRank;
 	if (MathLib::Abs((RankClan(playersClan1)+playerRank) - RankClan(playersClan2))
@@ -1349,36 +1280,39 @@ Void refreshVoteBalance() {
 			 || (!AutoServerStartVoteBalance && nbVotant == AllPlayers.count)) {
 			
 			BalancingIsRequired = False;
-			UIManager.UIAll.SendChat("Le vote est passé");
+			/*UIManager.UIAll.SendChat("Le vote est passé");
 			UIManager.UIAll.SendChat("Yes "^VoteBalanceResult[0].count);
 			UIManager.UIAll.SendChat("No "^VoteBalanceResult[1].count);
-			UIManager.UIAll.SendChat("Other "^VoteBalanceResult[2].count);
+			UIManager.UIAll.SendChat("Other "^VoteBalanceResult[2].count);*/
 		
-			if (nbVotant > 0) {
+			if (nbVotant > 0) {	// Dans le cas où le serveur n'aurait pas de voix
 				declare Real[] tmpRatio;
 				foreach (option in VoteBalanceResult)
 					tmpRatio.add(option.count / nbVotant);
 
 				if (tmpRatio[0] >= tmpRatio[2] && tmpRatio[0]+tmpRatio[2] >= S_RatioToValideVoteBalance) {
 					// vote equilibrage par option defaut
+					UIManager.UIAll.SendChat("The vote was accepted");
 					if (BalanceType == 1) {
-						UIManager.UIAll.SendChat("Équilibrage par ranks");
+						//UIManager.UIAll.SendChat("Équilibrage par ranks");
 						BalanceTeams(1);
 					} else {
-						UIManager.UIAll.SendChat("Équilibrage par scores");
+						//UIManager.UIAll.SendChat("Équilibrage par scores");
 						BalanceTeams(2);
 					}
 				} else if (tmpRatio[2] > tmpRatio[0] && tmpRatio[0]+tmpRatio[2] >= S_RatioToValideVoteBalance) {
-					// vote equilibrage par option inverse
+					// vote equilibrage par option "inverse"/Other
+					UIManager.UIAll.SendChat("The vote was accepted with the other balancing option");
 					if (BalanceType == 1) {
-						UIManager.UIAll.SendChat("Équilibrage par scores");
+						//UIManager.UIAll.SendChat("Équilibrage par scores");
 						BalanceTeams(2);
 					} else {
-						UIManager.UIAll.SendChat("Équilibrage par ranks");
+						//UIManager.UIAll.SendChat("Équilibrage par ranks");
 						BalanceTeams(1);
 					}
 				} else {
-					UIManager.UIAll.SendChat("Équilibrage refusé");
+					//log("Équilibrage refusé");
+					UIManager.UIAll.SendChat("The vote was canceled");
 				}
 			}
 			AutoServerStartVoteBalance = False;
@@ -1402,30 +1336,6 @@ Void refreshVoteBalance() {
 		Net_CountdownVoteBalance = TextLib::ToText(MathLib::FloorInteger(((TimeStartVote + S_TimeToVoteBalance) - Now)/1000.));
 	}
 }
-
-/*Void BalanceTeams()
-{
-	LastTimeBalance = Now; 
-	
-	UIManager.UIAll.SendChat("Teams are now balanced in term of size.");
-	foreach (player in Players)
-	{	
-		declare oldPlayerClan = player.CurrentClan;
-		declare PlayerClan for player = GetTeam();
-		PlayerClan = GetTeam();
-		//yield;
-		
-		if (oldPlayerClan != PlayerClan)
-		{
-			UnspawnPlayer(player);
-			declare UI <=> UIManager.GetUI(player);
-			if (UI != Null)
-			{
-				UI.SendChat("$999Team notice: $fffYou was redirected to " ^ Teams[PlayerClan - 1].ColorizedName ^ " team"); 
-			}
-		}
-	}
-}*/
 
 Boolean IsValidSpawn(CSmMapLandmark spawn, CSmPlayer player)
 {
@@ -1494,13 +1404,6 @@ Text layer_GetSpawnInterface()
 	<manialink version="3">
 	<frame z-index="4">
 		
-		<!--<framemodel id="fm_Class">
-			<label {{{CC}}} posn="-22.5 0 2" id="Label_Icon" text=""/>
-			<quad posn="0 -8 1" id="Quad_Selected" style="BgRaceScore2" rot="-90" substyle="CartoucheLine" halign="left" valign="center" sizen="16 60" colorize="0f0"/>
-			<label textfont="Oswald" id="Label_SelectClass" scriptevents="1" posn="0 0 0" halign="center" valign="center" text="SOLDIER" sizen="60 15" textsize="4" />
-			<label textfont="RajdhaniMono" id="Label_KitCounter" posn="20 0 0" halign="center" valign="center" text="0" sizen="60 15" textsize="4" />
-		</framemodel>-->
-		
 		<framemodel id="fm_Class">
 			<label {{{CC}}} pos="-22.5 0" z-index="4" id="Label_Icon" text=""/>
 			<label textfont="Oswald" id="Label_SelectClass"  pos="-0.6 0" z-index="4" halign="center" valign="center" text="SOLDIER" sizen="60 15" textsize="3.6" />
@@ -1514,11 +1417,6 @@ Text layer_GetSpawnInterface()
 			<quad pos="-1 0" z-index="2" id="Quad_Selected" style="Bgs1InRace" rot="-90" substyle="BgTitle2" halign="center" valign="center" sizen="16 60" colorize="2AD400FF" opacity=".8"/>
 		</framemodel>
 		
-		<!--<framemodel id="fm_Spawn">
-			<quad posn="0 -8 1" id="Quad_Selected" style="BgRaceScore2" rot="90" substyle="CartoucheLine" halign="right" valign="center" sizen="16 60" colorize="0f0"/>
-			<label textfont="Oswald" id="Label_SelectSpawn" scriptevents="1" posn="0 0 0" halign="center" valign="center" text="SPAWN #1" sizen="60 15" textsize="4" />
-		</framemodel>-->
-		
 		<framemodel id="fm_Spawn">
 			<label textfont="Oswald" id="Label_SelectSpawn" pos="-0.8 0" z-index="4" halign="center" valign="center" text="SPAWN #1" sizen="60 15" textsize="3.6" />
 			
@@ -1529,50 +1427,10 @@ Text layer_GetSpawnInterface()
 		
 		
 	<frame id="mainFrame">
-		<!--<frame hidden="1">
-			<minimap posn="0 0 1" halign="center" valign="center" sizen="75 75" id="Minimap_Main" />
-			<quad halign="center" valign="center" sizen="95 95" image="file://Media/Manialinks/Common/StationInfo/WindowBg.dds" />
-			<quad halign="center" valign="center" sizen="80 80" image="file://Media/Manialinks/Common/Minimap/MinimapOverlay2.dds" posn="0 0 2" />
-		</frame>-->
 		
 		<frame posn="0 0 0" id="Frame_AtkInfo">
 			<label id="Label_AtkInfo" {{{CC}}} text="You are attacking!" textprefix="$s" textfont="OswaldMono" hidden="1"/>
 		</frame>
-		
-		<!--<frame posn="0 0 10" id="Clip_FrameKitInfo" clipsizen="180 80" clip="1"  z-index="2" clipposn="0 0">
-			<frame posn="0 0" id="FrameKitInfo" z-index="0">
-				<label posn="-88 30" halign="left" valign="bottom" textfont="Oswald" textprefix="$t" id="Label_DescClassName" text="Soldier" textsize="8" />
-				<quad posn="-90 30" halign="left" valign="bottom" bgcolor="000" opacity="1" sizen="45 10" />
-				<quad halign="center" valign="center" bgcolor="000" opacity="0.8" posn="0 -5" sizen="180 70" />
-				<label halign="right" valign="center" posn="85 35 5" textprefix="$s " text="Press '1' to heal yourself" />	
-				
-				<frame posn="0 25.75 5" id="FrameDescShootButton" scale="0.95">
-					<label posn="-86 0 2" text=" SHOOT BUTTON" halign="left" valign="top" textfont="Oswald" />
-					<quad posn="-88 2 1" sizen="175 7.5" bgcolor="000" opacity="0.5" />
-					<quad posn="-88 2 0" sizen="175 15" bgcolor="000" opacity="0.25" />		
-					<label id="Label_DescriptionShoot" posn="-80 -7.5 0" textprefix="$s " text="MultiPlasma / MiniGun" />	
-				</frame>
-				<frame posn="0 8.5 5" id="FrameDescAction1Button" scale="0.95">
-					<label id="Label_Action1Button" posn="-86 0 2" text=" A   BUTTON" halign="left" valign="top" textfont="Oswald" />
-					<label posn="-84.5 -1.5 2" text=" " halign="center" valign="center" textfont="Oswald" textsize="5" />
-					<quad posn="-88 2 1" sizen="175 7.5" bgcolor="000" opacity="0.5" />
-					<quad posn="-88 2 0" sizen="175 15" bgcolor="000" opacity="0.25" />		
-					<label id="Label_DescriptionAction1" posn="-80 -7.5 0" textprefix="$s " text="Switch Weapon between MultiPlasma and MiniGun" />	
-				</frame>
-				<frame posn="0 -8.5 5" id="FrameDescAction2Button" scale="0.95">
-					<label posn="-86 0 2" text=" E   BUTTON" halign="left" valign="top" textfont="Oswald" />
-					<label posn="-84.5 -1.5 2" text=" " halign="center" valign="center" textfont="Oswald" textsize="5" />
-					<quad posn="-88 2 1" sizen="175 7.5" bgcolor="000" opacity="0.5" />
-					<quad posn="-88 2 0" sizen="175 15" bgcolor="000" opacity="0.25" />		
-					<label id="Label_DescriptionAction2" posn="-80 -7.5 0" textprefix="$s " text="Grenade" />	
-				</frame>
-				
-				<label id="Label_DescriptionWarning" posn="-84 -22" sizen="170" autonewline="1" halign="left" valign="top" textprefix="$f00" text=" MultiPlasma is very powerful with 4 amunitions !
- MiniGun can explose if it is used too long !" textsize="2"/>
-
-			</frame>
-		</frame>-->
-		
 		
 		<!-- Panneau de vote -->
 		<frame pos="-124 76" scale="0.8" z-index="2" id="votePane" hidden="1">
@@ -1612,14 +1470,6 @@ Text layer_GetSpawnInterface()
 			</frame>
 		</frame>
 		
-		
-		
-		
-		
-		
-		
-		
-		
 		<frame posn="0 0 10" id="Clip_FrameKitInfo" clipsizen="185 85" clip="1"  z-index="2" clipposn="0 0">
 			<frame posn="0 0" id="FrameKitInfo">
 				<label posn="-88 30" z-index="1" halign="left" valign="bottom" textfont="Oswald" textprefix="$t$g" id="Label_DescClassName" text="Soldier" textsize="8" />
@@ -1637,8 +1487,6 @@ Text layer_GetSpawnInterface()
 					<label id="Label_DescriptionShoot" pos="-80 -7" z-index="2" textprefix="$s " text="MultiPlasma / MiniGun" />	
 				</frame>
 				
-				
-				
 				<frame pos="0 8.5" id="FrameDescShootButton" scale="0.95" z-index="1">
 					<label id="Label_Action1Button" pos="-85 0.5" z-index="2" text=" A   BUTTON" halign="left" valign="top" textfont="Oswald" />
 					<label pos="-83.7 -1.2" z-index="2" text=" " halign="center" valign="center" textfont="Oswald" textsize="5" />
@@ -1646,7 +1494,6 @@ Text layer_GetSpawnInterface()
 					<quad posn="-88 2 0" z-index="0" sizen="175 15" style="BgsPlayerCard" substyle="ProgressBar"bgcolor="000" opacity=".8" colorize="000" />		
 					<label id="Label_DescriptionAction1" pos="-80 -7" z-index="2" textprefix="$s " text="Switch Weapon between MultiPlasma and MiniGun" />	
 				</frame>
-				
 				
 				<frame pos="0 -8.5" id="FrameDescShootButton" scale="0.95" z-index="1">
 					<label id="Label_Action1Button" pos="-85 0.5" z-index="2" text=" E   BUTTON" halign="left" valign="top" textfont="Oswald" />
@@ -1656,23 +1503,10 @@ Text layer_GetSpawnInterface()
 					<label id="Label_DescriptionAction2" pos="-80 -7" z-index="2" textprefix="$s " text="Grenade" />	
 				</frame>
 				
-				
-				
-				
 				<label id="Label_DescriptionWarning" pos="-84 -24" z-index="1" sizen="170" autonewline="1" halign="left" valign="top" textprefix="$s$f00" text=" MultiPlasma is very powerful with 4 amunitions !
  MiniGun can explose if it is used too long !" textsize="2"/>
 			</frame>
 		</frame>
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
 		
 		<frame posn="0 70" id="FrameViewLogo" z-index="0">
 			<quad posn="0 -10.75" sizen="60 20" halign="center" valign="center" z-index="1" image="https://cdn.discordapp.com/attachments/244514503323025408/316925411625795587/AgeLogo.png" keepratio="Fit" />	
@@ -1682,16 +1516,6 @@ Text layer_GetSpawnInterface()
 			<quad posn="0 1.5" halign="center" valign="center" z-index="0" sizen="360 40" style="Bgs1InRace" substyle="BgGradTop" opacity="1."/>
 		</frame>
 
-		<!--<frame posn="-130 25" scale="1" id="FrameViewSpawns" z-index="2">
-			<quad posn="0 -25 -60" style="Bgs1" substyle="BgEmpty" halign="center" valign="center" sizen="75 100" />
-			<label posn="0 -70 1" halign="center" valign="center" style="TextButtonNav" scriptevents="1" text="$s🎥 Reset Spawn Selection" sizen="60 10" id="resetView" />
-			<label posn="0 32 10" halign="center" valign="center" textfont="Oswald" text="$fff$tSelect your spawn" sizen="40 10" scale="1.5" />
-			<quad posn="0 25.5 10" halign="center" valign="center" bgcolor="eee" opacity="1." sizen="60 0.75" />
-			<label posn="0 25.5 10" halign="center" valign="center" textcolor="fff" text="$fff⏷" sizen="40 10" scale="2" />
-			
-			{{{ml_spawnFrame}}}
-		</frame>-->
-		
 		<!-- Volet de selection de Spawn -->
 		<frame posn="-130 25" scale="1" id="FrameViewSpawns" z-index="2">
 			<frame pos="4 -1" z-index="1">
@@ -1711,22 +1535,6 @@ Text layer_GetSpawnInterface()
 				<quad posn="65.6 38.6" z-index="0" sizen="65 99" bgcolor="FFFA" style="Bgs1" substyle="BgButtonGrayed" opacity=".0"/>
 			</frame>
 		</frame>
-		
-		<!--<frame posn="130 25" id="FrameViewKits" z-index="2">
-			<quad posn="0 -25 -60" style="Bgs1" substyle="BgEmpty" halign="center" valign="center" sizen="75 100" />
-			<label posn="0 32 10" halign="center" valign="center" textfont="Oswald" text="$fff$tSelect your kit" sizen="40 10" scale="1.5" />
-			<quad posn="0 25.5 10" halign="center" valign="center" bgcolor="eee" opacity="1." sizen="60 0.75" />
-			<label posn="0 25.5 10" halign="center" valign="center" textcolor="fff" text="$fff⏷" sizen="40 10" scale="2" />
-			
-			<frame posn="0 -25">
-				<frameinstance modelid="fm_Class" id="Frame_Class1" posn="0 40"/>
-				<frameinstance modelid="fm_Class" id="Frame_Class2" posn="0 24"/>
-				<frameinstance modelid="fm_Class" id="Frame_Class3" posn="0 8"/>
-				<frameinstance modelid="fm_Class" id="Frame_Class4" posn="0 -8"/>
-				<frameinstance modelid="fm_Class" id="Frame_Class5" posn="0 -24"/>
-				<frameinstance modelid="fm_Class" id="Frame_Class6" posn="0 -40"/>
-			</frame>
-		</frame>-->
 		
 		<!-- Volet de selection de Kit -->
 		<frame pos="130 25" id="FrameViewKits" z-index="2">
@@ -1752,15 +1560,6 @@ Text layer_GetSpawnInterface()
 			</frame>
 		</frame>
 		
-		<!--<frame posn="0 -75" scale="1" id="FrameViewReady">
-			<quad posn="0 5 -59" halign="center" valign="center" bgcolor="555" opacity="0.5" sizen="360 40" />	
-			<quad posn="0 24.5 10" halign="center" valign="center" bgcolor="eee" opacity="1." sizen="60 1" />
-			<quad posn="0 5.5 10" halign="center" valign="center" bgcolor="eee" opacity="1." sizen="60 1" />
-			<label posn="0 17 10" textfont="Oswald" halign="center" valign="center2" sizen="60 20" text="READY" textsize="8" />
-			<label posn="0 10 10" textfont="Oswald" halign="center" valign="center2" sizen="60 20" text="to spawn" textsize="4" />
-			<quad posn="0 15" halign="center" valign="center" bgcolor="222" scriptevents="1" sizen="60 20" id="setReady"/>
-		</frame>-->
-
 		<!-- Bouton Ready -->
 		<frame posn="0 -75" scale="1" id="FrameViewReady">
 			<quad halign="left" valign="top" pos="-32.3 26.9" z-index="1" sizen="64.6 23.3" style="Bgs1InRace" substyle="BgButtonGlow" opacity="1"/>
@@ -1807,14 +1606,14 @@ Text layer_GetSpawnInterface()
 			}
 			
 			Vec3 Lerp(Vec3 a, Vec3 b, Real t)
-      {
+    		{
 				if (t > 1) return b;
 				declare v1 = a[0]*(1-t) + b[0]*t;
 				declare v2 = a[1]*(1-t) + b[1]*t;
 				declare v3 = a[2]*(1-t) + b[2]*t;
 				
 				return <v1, v2, v3>;
-      }
+    		}
 		
 			Vec3 stringToVec3(Text string)
 			{
@@ -2465,13 +2264,10 @@ Text layer_GetSpawnInterface()
 							if (Net_BalancingIsRequired) {
 								declare netwrite Net_PlayerVote for UI = 0;
 								if (event.KeyName == "F3") {
-									//log("F3");
 									Net_PlayerVote += 1;
 								} else if (event.KeyName == "F4") {
-									//log("F4");
 									Net_PlayerVote += 2;
 								} else if (event.KeyName == "F5") {
-									//log("F5");
 									Net_PlayerVote += 3;
 								}
 							}
