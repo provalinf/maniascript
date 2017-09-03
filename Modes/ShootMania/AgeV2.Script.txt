@@ -472,24 +472,25 @@ OpenLink("https://discordapp.com/invite/BBHC3sT", CMlScript::LinkType::ExternalB
 			+++OnActionCustomEvent+++
 		}
 	}
-	
+
 	refreshVoteBalance();
 	foreach (player in AllPlayers) {
-		if (player != Null) {
-			if (Players.exists(player) && spectatorList.exists(player)) {
-				// Passage de spectateur à joueur
-				spectatorList.remove(player);
-				declare Integer PlayerClan for player;
-				PlayerClan = dispatchNewOrSpectPlayerClan(player);
-				declare TempoPlayerRequestedClan for player = 0;
-				TempoPlayerRequestedClan = Now;
-				UnspawnPlayer(player);
-				SetPlayerClan(player, PlayerClan);	// Important également si le round n'est pas actif
-				log("Joueur "^player.User.Login^", redirigé vers l'équipe n°"^PlayerClan);
-			} else if (!Players.exists(player) && !spectatorList.exists(player)) {
-				// Passage de joueur à spectateur
-				spectatorList.add(player);
-			}
+		if (!player.IsBot)
+			if (player != Null) {
+				if (Players.exists(player) && spectatorList.exists(player)) {
+					// Passage de spectateur à joueur
+					spectatorList.remove(player);
+					declare Integer PlayerClan for player;
+					PlayerClan = dispatchNewOrSpectPlayerClan(player);
+					declare TempoPlayerRequestedClan for player = 0;
+					TempoPlayerRequestedClan = Now;
+					UnspawnPlayer(player);
+					SetPlayerClan(player, PlayerClan);	// Important également si le round n'est pas actif
+					log("Joueur "^player.User.Login^", redirigé vers l'équipe n°"^PlayerClan);
+				} else if (!Players.exists(player) && !spectatorList.exists(player)) {
+					// Passage de joueur à spectateur
+					spectatorList.add(player);
+				}
 		}
 	}
 	
@@ -1274,10 +1275,12 @@ Void refreshVoteBalance() {
 	if (BalancingIsRequired /*&& TimeStartVote + S_TimeToVoteBalance < Now*/) {	// End vote
 		declare Real nbVotant = 0.;
 		foreach (option in VoteBalanceResult) nbVotant += option.count;
-
+		declare AllplayersNoBotCount = 0;
+		foreach (player in AllPlayers) if (!player.IsBot && !player.IsFakePlayer) AllplayersNoBotCount +=1;
+		
 		if (TimeStartVote + S_TimeToVoteBalance < Now
-			 || (AutoServerStartVoteBalance && nbVotant - 1 == AllPlayers.count)
-			 || (!AutoServerStartVoteBalance && nbVotant == AllPlayers.count)) {
+			 || (AutoServerStartVoteBalance && nbVotant - 1 == AllplayersNoBotCount)
+			 || (!AutoServerStartVoteBalance && nbVotant == AllplayersNoBotCount)) {
 			
 			BalancingIsRequired = False;
 			/*UIManager.UIAll.SendChat("Le vote est passé");
