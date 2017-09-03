@@ -47,8 +47,8 @@
 #Setting S_AFKIdleTimeLimit 60000 as _("In millisecond")
 #Setting S_AFKSpawnSelectTimeLimit 20000 as _("In millisecond")
 #Setting S_MaxRounds 4
-#Setting S_BotBlue	0
-#Setting S_BotRed		0
+#Setting S_BotBlue	1
+#Setting S_BotRed		1
 
 /// <summary>
 /// Current Attacking clan.
@@ -1730,7 +1730,7 @@ Text layer_GetSpawnInterface()
 		
 		<!-- Volet de selection de Kit -->
 		<frame pos="130 25" id="FrameViewKits" z-index="2">
-			<frame posn="-2 -25" z-index="1">
+			<frame posn="-2 -21" z-index="1">
 				<frameinstance modelid="fm_Class" id="Frame_Class1" posn="0 40"/>
 				<frameinstance modelid="fm_Class" id="Frame_Class2" posn="0 26"/>
 				<frameinstance modelid="fm_Class" id="Frame_Class3" posn="0 12"/>
@@ -1740,7 +1740,7 @@ Text layer_GetSpawnInterface()
 				<frameinstance modelid="fm_Class" id="Frame_Class7" posn="0 -44"/>
 			</frame>
 			
-			<frame pos="-101 -12" z-index="0">
+			<frame pos="-101 -8" z-index="0">
 				<quad posn="74.9 47.7" z-index="0" size="10.8 11.7" bgcolor="FFFA" style="ManiaPlanetMainMenu" substyle="IconStore" halign="center" valign="center"/>
 				<label halign="center" valign="center" textfont="Oswald" text="$fff$tSelect your kit" sizen="40 10" scale="1.4"  pos="101 47.5" />
 				<quad  halign="center" valign="center" bgcolor="eee" opacity="1." sizen="56.1 0.714"  pos="98 41.7" />
