@@ -88,8 +88,6 @@ declare Boolean AutoServerStartVoteBalance;
 declare Real MapMinTime;
 declare Integer StartPrevMapTime;
 
-declare CSmPlayer[] spectatorList;
-
 ***Match_StartServer***
 ***
 	AttackingClan = MathLib::Rand(1, 2);
@@ -475,11 +473,12 @@ OpenLink("https://discordapp.com/invite/BBHC3sT", CMlScript::LinkType::ExternalB
 
 	refreshVoteBalance();
 	foreach (player in AllPlayers) {
-		if (!player.IsBot)
+		if (!player.User.IsFakeUser && !player.IsBot)
 			if (player != Null) {
-				if (Players.exists(player) && spectatorList.exists(player)) {
+				declare isSpectator for player = False;
+				if (Players.exists(player) && isSpectator) {
 					// Passage de spectateur à joueur
-					spectatorList.remove(player);
+					isSpectator = False;
 					declare Integer PlayerClan for player;
 					PlayerClan = dispatchNewOrSpectPlayerClan(player);
 					declare TempoPlayerRequestedClan for player = 0;
@@ -487,9 +486,9 @@ OpenLink("https://discordapp.com/invite/BBHC3sT", CMlScript::LinkType::ExternalB
 					UnspawnPlayer(player);
 					SetPlayerClan(player, PlayerClan);	// Important également si le round n'est pas actif
 					log("Joueur "^player.User.Login^", redirigé vers l'équipe n°"^PlayerClan);
-				} else if (!Players.exists(player) && !spectatorList.exists(player)) {
+				} else if (!Players.exists(player) && !isSpectator) {
 					// Passage de joueur à spectateur
-					spectatorList.add(player);
+					isSpectator = True;
 				}
 		}
 	}
