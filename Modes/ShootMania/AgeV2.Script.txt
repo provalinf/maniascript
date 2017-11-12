@@ -87,6 +87,7 @@ declare Text[][] VoteBalanceResult;
 declare Boolean AutoServerStartVoteBalance;
 declare Real MapMinTime;
 declare Integer StartPrevMapTime;
+declare Boolean antiBugMapStartRequestedClan;
 
 ***Match_StartServer***
 ***
@@ -286,6 +287,7 @@ OpenLink("https://discordapp.com/invite/BBHC3sT", CMlScript::LinkType::ExternalB
 	
 	StartTime = Now;
 	StartPrevMapTime = Now;
+	antiBugMapStartRequestedClan = True;
 	
 	UIManager.UIAll.UISequence = CUIConfig::EUISequence::Playing;
 	
@@ -493,6 +495,8 @@ OpenLink("https://discordapp.com/invite/BBHC3sT", CMlScript::LinkType::ExternalB
 		}
 	}
 	
+	declare antiBugRequestedClan = True;
+
 	foreach (player in Players)	// Spectateur exclus
 	{
 		player.Stamina += 1;
@@ -510,9 +514,15 @@ OpenLink("https://discordapp.com/invite/BBHC3sT", CMlScript::LinkType::ExternalB
 			}
 		
 			declare PlayerClan for player = player.RequestedClan;
+			declare Integer prevPlayerClan for player.User;
 			declare TempoPlayerRequestedClan for player = 0;
-			if (TempoPlayerRequestedClan + S_AFKSpawnSelectTimeLimit < Now)
+			if (!antiBugMapStartRequestedClan && TempoPlayerRequestedClan + S_AFKSpawnSelectTimeLimit < Now)
 				PlayerClan = player.RequestedClan;
+			else if (prevPlayerClan != 0 && prevPlayerClan != player.RequestedClan && !player.User.IsFakeUser && !player.IsBot) {
+				antiBugRequestedClan = False;
+				PlayerClan = prevPlayerClan;
+				log("Res current clan ("^PlayerClan^") for "^player.User.Id);
+			}
 			
 			SetPlayerClan(player, PlayerClan);
 			
@@ -528,9 +538,7 @@ OpenLink("https://discordapp.com/invite/BBHC3sT", CMlScript::LinkType::ExternalB
 			declare netwrite Net_playerMayChooseThisKit for player = "";
 			Net_playerMayChooseThisKit = Net_playerWantedKit;
 			
-			if ((Net_playerWantRespawn
-			|| player.User.IsFakeUser)
-			&& MatchStartTime < Now)
+			if ((Net_playerWantRespawn || player.User.IsFakeUser) && MatchStartTime < Now)
 			{			
 				declare CSmMapLandmark spawn;
 				if (MapLandmarks_PlayerSpawn.existskey(Net_playerSpawn))
@@ -565,6 +573,8 @@ OpenLink("https://discordapp.com/invite/BBHC3sT", CMlScript::LinkType::ExternalB
 			/*Layers::Detach("CGame.SpawnInterface", player);*/
 		}
 	}
+
+	if (antiBugRequestedClan) antiBugMapStartRequestedClan = False;
 	
 	declare nbOfCheckpointsCaptured = 0;
 	foreach (clanOrder => order in Checkpoints)
@@ -851,6 +861,13 @@ OpenLink("https://discordapp.com/invite/BBHC3sT", CMlScript::LinkType::ExternalB
 
 ***Match_EndMap***
 ***
+
+	foreach (player in Players) {	// Spectateur exclus
+		declare Integer prevPlayerClan for player.User;
+		prevPlayerClan = player.CurrentClan;
+		log("Sav current clan ("^prevPlayerClan^") for "^player.User.Id);
+	}
+
 	if (MapWinner != 0)
 	{
 		if (MapWinner != 3)
