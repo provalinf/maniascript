@@ -518,7 +518,8 @@ OpenLink("https://discordapp.com/invite/BBHC3sT", CMlScript::LinkType::ExternalB
 			declare TempoPlayerRequestedClan for player = 0;
 			if (!antiBugMapStartRequestedClan && TempoPlayerRequestedClan + S_AFKSpawnSelectTimeLimit < Now)
 				PlayerClan = player.RequestedClan;
-			else if (prevPlayerClan != 0 && prevPlayerClan != player.RequestedClan && !player.User.IsFakeUser && !player.IsBot) {
+			else if (antiBugMapStartRequestedClan && prevPlayerClan != 0 && prevPlayerClan != player.RequestedClan
+								&& !player.User.IsFakeUser && !player.IsBot) {
 				antiBugRequestedClan = False;
 				PlayerClan = prevPlayerClan;
 				log("Res current clan ("^PlayerClan^") for "^player.User.Id);
@@ -1930,7 +1931,7 @@ Text layer_GetSpawnInterface()
 					declare LabelNbVote = [LabelVoteNbYes, LabelVoteNbNo, LabelVoteNbOther];
 					declare QuadBgVote = [QuadBgVoteYes, QuadBgVoteNo, QuadBgVoteOther];
 					foreach (key => option in Net_VoteBalanceResult2) {
-						if (option.exists(InputPlayer.User.Login)) {
+						if (option.exists(LocalUser.Login)) {
 							LabelNbVote[key].Value = "$0a0"^option.count;
 							QuadBgVote[key].Colorize = <.2, 1., .2>;
 						} else {
